@@ -1,0 +1,27 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Arial, sans-serif; background: #f3f7f6; color: #1d2b2a; }
+header { background: #0b5d4b; color: #fff; padding: 14px 16px; font-size: 20px; font-weight: 700; }
+main { padding: 16px; max-width: 520px; margin: auto; padding-bottom: 40px; }
+label { display: block; font-weight: 700; margin: 16px 0 6px; font-size: 17px; }
+input, select, textarea { width: 100%; font-size: 18px; padding: 12px; border: 1px solid #9bb; border-radius: 10px; background: #fff; }
+#boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.box { border: 3px solid #0b5d4b; border-radius: 16px; background: #fff; padding: 18px 8px; text-align: center; cursor: pointer; min-height: 130px; }
+.box .name { font-size: 26px; font-weight: 800; color: #0b5d4b; }
+.box .hint { font-size: 13px; color: #5a6b69; margin-top: 4px; }
+.box .count { font-size: 15px; margin-top: 8px; font-weight: 700; }
+.box.has { background: #e6f5ee; }
+.thumbs { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.thumbs img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+.thumbs .x { position: relative; }
+.thumbs .x span { position: absolute; top: -6px; right: -6px; background: #c0392b; color: #fff; border-radius: 50%; width: 20px; height: 20px; font-size: 13px; line-height: 20px; }
+.defects { margin-top: 22px; padding-top: 4px; border-top: 2px solid #cfdad7; }
+.yn { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.yn button { font-size: 22px; padding: 16px; border-radius: 12px; border: 2px solid #777; background: #fff; font-weight: 700; }
+.yn .no.on { background: #1f8a5f; border-color: #1f8a5f; color: #fff; }
+.yn .yes.on { background: #c0392b; border-color: #c0392b; color: #fff; }
+textarea { margin-top: 12px; min-height: 90px; }
+.submit { width: 100%; margin-top: 20px; font-size: 24px; padding: 18px; border: 0; border-radius: 14px; background: #d9822b; color: #fff; font-weight: 800; }
+.submit:disabled { background: #bbb; }
+#msg { margin-top: 14px; padding: 12px; border-radius: 10px; font-size: 16px; display: none; }
+#msg.ok { background: #d6f0e0; } #msg.err { background: #fbd9d5; } #msg.info { background: #fff0cc; }
+#pending { margin-top: 10px; font-size: 14px; color: #5a6b69; }

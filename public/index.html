@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b5d4b">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+<title>WRS Cleaning Photos</title>
+</head>
+<body>
+<header>WRS Cleaning Photos</header>
+<main>
+  <label for="cleaner">Your name</label>
+  <input id="cleaner" type="text" autocomplete="name" placeholder="Name">
+
+  <label for="client">Client</label>
+  <select id="client"><option value="">Select client</option></select>
+
+  <label for="date">Date of work</label>
+  <input id="date" type="date">
+
+  <div id="boxes"></div>
+
+  <section class="defects">
+    <label>Any defects noticed in this visit?</label>
+    <div class="yn">
+      <button type="button" data-v="No" class="no">No</button>
+      <button type="button" data-v="Yes" class="yes">Yes</button>
+    </div>
+    <textarea id="details" placeholder="Describe the defect (optional)"></textarea>
+  </section>
+
+  <button id="submit" class="submit" type="button">Submit</button>
+  <div id="msg" role="status"></div>
+  <div id="pending"></div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
