@@ -14,7 +14,7 @@ const jpeg = (tag) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buff
 
 before(async () => {
   dir = mkdtempSync(path.join(tmpdir(), 'wrs-'));
-  const cfg = loadConfig({ DATA_DIR: dir, CLEANER_PIN: '4321', SESSION_SECRET: 's3cret', CLEANER_NAME: 'Ramesh' });
+  const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '4321', SESSION_SECRET: 's3cret', CLEANER_NAME: 'Ramesh' });
   for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', 'Clients', c.folder), { recursive: true });
   server = createApp(cfg, { now: () => NOW });
   await new Promise((r) => server.listen(0, r));
@@ -88,7 +88,7 @@ test('second visit same day continues numbering, flags GPS problems', async () =
 test('failed storage does not lose or double anything', async () => {
   const r = await photo({ visit: 'visit-0003-cccc', box: 'Before', client: 'c06', ...near }, jpeg('c06'));
   assert.equal(r.status, 200); // c06 folder exists (created in setup)
-  const missing = createApp(loadConfig({ DATA_DIR: dir, CLEANER_PIN: '' }), { now: () => NOW });
+  const missing = createApp(loadConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '' }), { now: () => NOW });
   await new Promise((res) => missing.listen(0, res));
   const url = `http://localhost:${missing.address().port}/api/photo?client=c01&date=${TODAY}&box=Before&visit=visit-0004-dddd`;
   rmSync(path.join(dir, 'onedrive', 'Clients', 'Sharma Residence'), { recursive: true });
