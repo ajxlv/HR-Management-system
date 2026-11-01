@@ -4,10 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Cleaner photo upload app for WRS Solutions (HR management system)",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server/index.js",
     "seed": "node scripts/seed.js",
+    "demo": "node scripts/demo.js",
     "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
   }
 }

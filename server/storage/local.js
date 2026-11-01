@@ -3,7 +3,7 @@ import path from 'node:path';
 
 // Stand-in for OneDrive: a folder on disk laid out exactly like OneDrive.
 export class LocalStorage {
-  constructor(dataDir) { this.base = path.join(dataDir, 'onedrive'); }
+  constructor(base) { this.base = base; } // any folder, e.g. the OneDrive sync folder
 
   async saveFile({ rootFolder, clientFolder, date, box, buffer }) {
     const clientDir = path.join(this.base, rootFolder, clientFolder);

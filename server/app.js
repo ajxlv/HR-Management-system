@@ -8,6 +8,7 @@ import { State } from './state.js';
 import { LocalStorage, httpError } from './storage/local.js';
 import { OneDriveStorage } from './storage/onedrive.js';
 import { CsvSheet } from './sheets/csv.js';
+import { ExcelSheet } from './sheets/excel.js';
 import { GoogleSheet } from './sheets/google.js';
 import { Mutex, istDate, istDateTime, daysBetween, isRealDate, distanceM } from './util.js';
 
@@ -17,10 +18,11 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 export function createApp(cfg, deps = {}) {
   const secret = cfg.secret || crypto.randomBytes(32).toString('hex');
   const state = new State(path.join(cfg.dataDir, 'state.json'));
-  const storage = deps.storage || (cfg.storage === 'onedrive' ? new OneDriveStorage(cfg.ms) : new LocalStorage(cfg.dataDir));
+  const storage = deps.storage || (cfg.storage === 'onedrive' ? new OneDriveStorage(cfg.ms) : new LocalStorage(cfg.localRoot || path.join(cfg.dataDir, 'onedrive')));
   const sheet = deps.sheet || (cfg.sheet === 'google'
     ? new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google }, HEADERS, BOXES.length)
-    : new CsvSheet(cfg.dataDir, HEADERS));
+    : cfg.sheet === 'csv' ? new CsvSheet(cfg.dataDir, HEADERS)
+    : new ExcelSheet(path.join(cfg.dataDir, 'WRS_Cleaning_Status.xlsx'), HEADERS, BOXES.length));
   const mutex = new Mutex();
   const now = deps.now || (() => Date.now());
   const clientById = new Map(cfg.clients.map((c) => [c.id, c]));
@@ -164,6 +166,12 @@ export function createApp(cfg, deps = {}) {
     try {
       const url = new URL(req.url, 'http://x');
       const p = url.pathname;
+      if (p === '/report.xlsx' && cfg.sheet === 'excel' && cfg.reportKey && url.searchParams.get('key') === cfg.reportKey) {
+        const file = await fs.readFile(path.join(cfg.dataDir, 'WRS_Cleaning_Status.xlsx')).catch(() => null);
+        if (!file) return send(res, 404, { error: 'No visits yet' });
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="WRS_Cleaning_Status.xlsx"', 'Cache-Control': 'no-store' });
+        return res.end(file);
+      }
       if (!p.startsWith('/api/')) return await serveStatic(req, res, p);
 
       if (p === '/api/health') return send(res, 200, { ok: true });
