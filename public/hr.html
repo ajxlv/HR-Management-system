@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WRS HR Dashboard</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/hr.css">
+</head>
+<body>
+  <section id="gate" class="gate" hidden>
+    <div class="brand"><span class="sun"></span>WRS Solutions · HR</div>
+    <h1>HR key</h1>
+    <input id="key" type="password" autocomplete="current-password" aria-label="HR key">
+    <button id="go" class="btn">OPEN</button>
+    <p id="gateMsg" class="err"></p>
+  </section>
+
+  <main id="main" hidden>
+    <header>
+      <div class="brand"><span class="sun"></span>WRS Solutions · Cleaning visits</div>
+      <a id="xlsx" class="btn ghost" hidden>Download Excel</a>
+    </header>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="filters">
+      <select id="fClient" aria-label="Client"></select>
+      <select id="fStatus" aria-label="Status">
+        <option value="">All visits</option>
+        <option value="incomplete">Missing photos</option>
+        <option value="defects">Defects reported</option>
+        <option value="flags">Needs a check</option>
+        <option value="ok">All good</option>
+      </select>
+      <span id="count" class="count"></span>
+    </div>
+
+    <div id="list" class="list"></div>
+  </main>
+
+  <div id="lightbox" class="lightbox" hidden><img alt=""><button aria-label="Close">×</button></div>
+  <script src="/hr.js" type="module"></script>
+</body>
+</html>

@@ -17,9 +17,18 @@ npm test                 # full flow test
 Camera and GPS need HTTPS on a real phone. `localhost` counts as safe on the same computer only.
 Photos land in `data/onedrive/Clients/<client>/<date>/`. The status sheet is the Excel file `data/WRS_Cleaning_Status.xlsx`.
 
+## See it working in one command
+
+```bash
+npm run demo:serve
+```
+
+Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR dashboard at `/hr.html`, key `hr-demo`. Walkthrough: `docs/DEMO_SCRIPT.md`. What we still need to fill in: `docs/SETUP_CHECKLIST.md`. Screenshots: `docs/screens/`.
+
 ## What HR gets
 
 - OneDrive: `Clients/<client folder>/YYYY-MM-DD/Before_1.jpg, After_1.jpg, Bill_1.jpg, Wires_1.jpg`. A second visit the same day carries on the numbers. Nothing is overwritten.
+- **Dashboard page** at `/hr.html` (needs `REPORT_KEY`): every visit with chips for missing photos, defects and checks, filters, photo thumbnails and the Excel download. Thumbnails work when photos are saved to a folder on the app PC (`STORAGE=local`); with direct Microsoft Graph upload the page shows the folder path instead.
 - Excel sheet (`WRS_Cleaning_Status.xlsx`): one tab per client. Columns: Visit date, Submitted at (IST), Cleaner, Before, After, Bill, Wires, Defects, Defect details, Checks, Folder path. Boxes show green "Uploaded (n)" or red "Not uploaded". Checks lists photos with no GPS, more than 300 m from the site, or taken on a different day.
 
 ## Everyday jobs

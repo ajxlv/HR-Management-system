@@ -5,6 +5,13 @@ import path from 'node:path';
 export class LocalStorage {
   constructor(base) { this.base = base; } // any folder, e.g. the OneDrive sync folder
 
+  // Used by the HR page to show thumbnails. relPath comes from our own records, never from the user.
+  async read(relPath) {
+    const file = path.join(this.base, relPath);
+    if (!file.startsWith(this.base + path.sep)) throw httpError(400, 'Bad path');
+    return fs.readFile(file);
+  }
+
   async saveFile({ rootFolder, clientFolder, date, box, buffer }) {
     const clientDir = path.join(this.base, rootFolder, clientFolder);
     try { await fs.access(clientDir); }
