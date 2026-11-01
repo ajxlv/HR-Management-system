@@ -194,7 +194,7 @@ export function createApp(cfg, deps = {}) {
     send(res, 404, { error: 'Not found' });
   }
 
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://x');
       const p = url.pathname;
@@ -230,4 +230,7 @@ export function createApp(cfg, deps = {}) {
       send(res, status, { error: status >= 500 && !e.status ? 'Server error' : e.message });
     }
   });
+  // In-process access (used to load demo data without any network call).
+  server.direct = { photo: savePhoto, visit: submitVisit };
+  return server;
 }
