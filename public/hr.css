@@ -1,4 +1,4 @@
-:root { --bg:#f4f1ea; --card:#fff; --ink:#14221c; --muted:#5b6b63; --brand:#0b3d2e; --brand-2:#14634a; --sun:#f5a623; --good:#1b8a4b; --bad:#c62828; --warn:#a96a00; --line:#dcd6c8; color-scheme: light; }
+:root { --bg:#f4f1ea; --card:#fff; --ink:#14221c; --muted:#5b6b63; --brand:#0b3a5c; --brand-2:#0098e0; --sun:#f09800; --good:#1b8a4b; --bad:#c62828; --warn:#a96a00; --line:#dcd6c8; color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font:500 16px/1.4 'Plus Jakarta Sans', system-ui, sans-serif; padding:0 20px 48px; }
 main { max-width: 1040px; margin: 0 auto; }
@@ -48,5 +48,5 @@ header { display:flex; align-items:center; justify-content:space-between; gap:12
 
 @media (max-width: 720px) { .visit > button { grid-template-columns: 1fr auto; } .chips { grid-column: 1 / -1; } .when { display:none; } }
 
-.logo { width:40px; height:40px; border-radius:11px; box-shadow:0 4px 12px -4px rgba(11,61,46,.5); }
-.logo.xl { width:84px; height:84px; border-radius:22px; display:block; margin:0 auto 14px; }
+.logo-sm { height:44px; width:auto; display:block; }
+.logo-xl { width:200px; max-width:70%; height:auto; display:block; margin:0 auto 18px; }
