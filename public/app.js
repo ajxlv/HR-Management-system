@@ -11,6 +11,7 @@ const T = {
   wrongPin: 'Wrong PIN. Try again.',
   rejected: (m) => `One item was refused by the server: ${m}`,
   gps: 'Getting location…',
+  noGps: 'Photo added, but your location was NOT found. Turn on Location and take the photo again.',
 };
 const ICONS = {
   Before: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>',
@@ -133,8 +134,10 @@ async function onPick(box, files) {
     const blob = await makeJpeg(file, box.gps ? stampText(box, taken, pos) : null);
     (form.photos[box.key] ||= []).push({ id: crypto.randomUUID(), blob, url: URL.createObjectURL(blob), pos, taken });
     form.warned = '';
+    if (box.gps && !pos) { renderTiles(); say(T.noGps, 'warn'); continue; }
   }
-  say('', ''); renderTiles();
+  if (!$('msg').classList.contains('warn')) say('', '');
+  renderTiles();
 }
 
 function renderTiles() {
@@ -151,14 +154,49 @@ function renderTiles() {
     const thumbs = document.createElement('div'); thumbs.className = 'thumbs';
     list.forEach((p) => {
       const t = document.createElement('div'); t.className = 'thumb';
-      const img = new Image(); img.src = p.url; img.alt = box.label;
+      const img = new Image(); img.src = p.url; img.alt = box.label + ' photo, tap to view';
+      img.onclick = () => openViewer(box, p);
+      t.append(img);
+      if (box.gps) {
+        const g = gpsState(p), b = document.createElement('span');
+        b.className = 'badge ' + g.cls; b.textContent = g.short; t.append(b);
+      }
       const x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', 'Delete photo');
       x.onclick = () => { URL.revokeObjectURL(p.url); form.photos[box.key] = list.filter((q) => q !== p); form.warned = ''; renderTiles(); };
-      t.append(img, x); thumbs.append(t);
+      t.append(x); thumbs.append(t);
     });
     tile.append(input, hit, thumbs); return tile;
   }));
 }
+
+// ---------- GPS check and photo viewer ----------
+function gpsState(p) {
+  if (!p.pos) return { cls: 'none', short: 'NO GPS', long: 'No location in this photo' };
+  const acc = Math.round(p.pos.acc);
+  return acc > 50
+    ? { cls: 'weak', short: `GPS ±${acc} m`, long: `Location found, but weak (±${acc} m)` }
+    : { cls: 'ok', short: `GPS ±${acc} m`, long: `Location OK (±${acc} m)` };
+}
+function openViewer(box, p) {
+  $('vimg').src = p.url;
+  const cap = $('vcap'); cap.replaceChildren();
+  const add = (tag, text, cls) => { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; cap.append(e); return e; };
+  if (box.gps) {
+    const g = gpsState(p);
+    add('div', g.long, 'st ' + g.cls);
+    if (p.pos) {
+      add('small', `${p.pos.lat.toFixed(5)}, ${p.pos.lng.toFixed(5)}`);
+      const a = document.createElement('a'); a.className = 'map'; a.target = '_blank'; a.rel = 'noopener';
+      a.href = `https://www.google.com/maps?q=${p.pos.lat},${p.pos.lng}`; a.textContent = 'See on map';
+      cap.append(a);
+    } else add('small', 'Turn on Location, then delete this photo and take it again.');
+  } else add('small', 'No location needed for this photo.');
+  $('viewer').hidden = false;
+}
+const closeViewer = () => { $('viewer').hidden = true; $('vimg').removeAttribute('src'); };
+$('vclose').onclick = closeViewer;
+$('viewer').onclick = (e) => { if (e.target === $('viewer')) closeViewer(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeViewer(); });
 
 // ---------- defects ----------
 function setDefects(v) {
