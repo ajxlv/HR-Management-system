@@ -25,6 +25,15 @@ npm run demo:serve
 
 Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR dashboard at `/hr.html`, key `hr-demo`. Walkthrough: `docs/DEMO_SCRIPT.md`. What we still need to fill in: `docs/SETUP_CHECKLIST.md`. Screenshots: `docs/screens/`.
 
+## Demo on Vercel (demo only, not for real use)
+
+`api/index.js` + `vercel.json` run the whole app as one Vercel function, pre-filled with the sample visits. Vercel has no permanent disk, so everything is kept in temporary storage and is **re-created whenever the function restarts**. Anything the cleaner submits during the demo can disappear after a few minutes of inactivity. The real app must run on a PC or VM with a disk.
+
+1. vercel.com, **Add New, Project**, import `ajxlv/hr-management-system`.
+2. Framework preset **Other**. Leave Build Command empty. Production branch: `wrs-cleaning-photos` (Settings, Git).
+3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234), `REPORT_KEY` (hr-demo), `SESSION_SECRET`.
+4. Deploy. Open the link on a phone: camera and GPS work because Vercel gives HTTPS.
+
 ## What HR gets
 
 - OneDrive: `Clients/<client folder>/YYYY-MM-DD/Before_1.jpg, After_1.jpg, Bill_1.jpg, Wires_1.jpg`. A second visit the same day carries on the numbers. Nothing is overwritten.
