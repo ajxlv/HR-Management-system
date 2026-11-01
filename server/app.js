@@ -162,6 +162,38 @@ export function createApp(cfg, deps = {}) {
     } catch { send(res, 404, { error: 'Not found' }); }
   }
 
+  // ---- HR dashboard (read only, protected by REPORT_KEY) ----
+  function hrAllowed(req, url) {
+    const given = req.headers['x-hr-key'] || url.searchParams.get('key') || '';
+    const a = Buffer.from(String(given)), b = Buffer.from(cfg.reportKey);
+    return cfg.reportKey && a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  async function hrApi(req, res, p, url) {
+    if (!hrAllowed(req, url)) return send(res, 401, { error: 'Wrong or missing HR key' });
+    if (p === '/api/hr/visits') {
+      const visits = Object.values(state.data.visits).filter((v) => v.submitted).map((v) => {
+        const c = clientById.get(v.client);
+        const row = v.submitted.row;
+        return {
+          id: v.id, client: c?.name || v.client, date: v.date, submittedAt: row[1], cleaner: row[2],
+          counts: v.submitted.counts, defects: v.submitted.defects, details: v.submitted.details,
+          checks: row[BOXES.length + 5], folder: row[BOXES.length + 6], at: v.submitted.at,
+          photos: Object.entries(v.photos).map(([hash, ph]) => ({ hash, box: ph.box, name: ph.name })).sort((a, b) => a.name.localeCompare(b.name)),
+        };
+      }).sort((a, b) => b.at - a.at);
+      return send(res, 200, { boxes: BOXES.map((b) => b.key), canShowPhotos: typeof storage.read === 'function', hasExcel: cfg.sheet === 'excel', visits });
+    }
+    if (p === '/api/hr/photo') {
+      const ph = state.visit(url.searchParams.get('visit'))?.photos[url.searchParams.get('hash')];
+      if (!ph || typeof storage.read !== 'function') return send(res, 404, { error: 'No photo' });
+      const data = await storage.read(ph.path).catch(() => null);
+      if (!data) return send(res, 404, { error: 'No photo' });
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' });
+      return res.end(data);
+    }
+    send(res, 404, { error: 'Not found' });
+  }
+
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://x');
@@ -172,6 +204,7 @@ export function createApp(cfg, deps = {}) {
         res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="WRS_Cleaning_Status.xlsx"', 'Cache-Control': 'no-store' });
         return res.end(file);
       }
+      if (p.startsWith('/api/hr/')) return await hrApi(req, res, p, url);
       if (!p.startsWith('/api/')) return await serveStatic(req, res, p);
 
       if (p === '/api/health') return send(res, 200, { ok: true });
