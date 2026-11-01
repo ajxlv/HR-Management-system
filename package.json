@@ -1,12 +1,20 @@
 {
   "name": "wrs-cleaning-photos",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Phone web app for solar panel cleaners: photos go to the client's OneDrive folder, status goes to a Google Sheet.",
-  "main": "server/index.js",
+  "type": "module",
+  "description": "Cleaner photo upload app for WRS Solutions (HR management system)",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test"
+    "seed": "node scripts/seed.js",
+    "demo": "node scripts/demo.js",
+    "demo:serve": "node scripts/demo.js --serve",
+    "test": "node --test test/*.test.js"
   },
-  "engines": { "node": ">=18" }
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
 }

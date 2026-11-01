@@ -1,57 +1,97 @@
-# WRS Cleaning Photos
+# WRS Cleaning Photos (HR management system)
 
-A phone web app for solar panel cleaners. The cleaner picks the client and date, fills four photo boxes
-(Before, After, Bill, Wires), says whether there were defects, and submits. The photos go into that client's
-OneDrive folder under a date folder, and one row per visit goes into a Google Sheet that HR keeps open.
+A phone web app. The cleaner picks the client and date, takes **Before / After / Bill / Wires** photos, answers "any defects?" and presses **Submit**. Photos go to the client's folder in OneDrive. One row per visit goes to a Google Sheet for HR.
 
+No dependencies. Node 18+.
+
+## Try it on your computer (no accounts needed)
+
+```bash
+cp .env.example .env     # leave STORAGE=local and SHEET=csv
+npm run seed             # makes the demo client folders
+npm run demo             # fills demo/WRS_Cleaning_Status_demo.xlsx with sample visits
+npm start                # http://localhost:3000
+npm test                 # full flow test
 ```
-OneDrive / Clients / <Client folder> / 2026-11-01 / Before_1.jpg, Before_2.jpg, After_1.jpg, Bill_1.jpg, Wires_1.jpg
-Google Sheet / <Client tab> : Visit date | Submitted at | Cleaner | Before | After | Bill | Wires | Defects | Defect details | Checks | Folder
+
+Camera and GPS need HTTPS on a real phone. `localhost` counts as safe on the same computer only.
+Photos land in `data/onedrive/Clients/<client>/<date>/`. The status sheet is the Excel file `data/WRS_Cleaning_Status.xlsx`.
+
+## See it working in one command
+
+```bash
+npm run demo:serve
 ```
 
-In the sheet, "Uploaded (n)" shows green and "Not uploaded" shows red. Defects "Yes" shows red.
+Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR dashboard at `/hr.html`, key `hr-demo`. Walkthrough: `docs/DEMO_SCRIPT.md`. What we still need to fill in: `docs/SETUP_CHECKLIST.md`. Screenshots: `docs/screens/`.
 
-## How the phone side works
-- Before, After and Wires open the phone's own camera. The app stamps client, date, time and GPS on the photo.
-  A photo older than 3 minutes is refused, so old gallery photos can't be passed off as new.
-- Bill opens the camera or the gallery, with no location needed.
-- Defects: Yes/No buttons are required; the text box is optional. Typing in it switches to Yes.
-- Submit with a box empty asks once for confirmation, then shows "Not uploaded" in the sheet.
-- Everything is queued on the phone first. With no signal, it sends when the signal returns.
+## Demo on Vercel (demo only, not for real use)
 
-## Checks the server does
-- Short file names, numbered: `Before_1.jpg`, `Before_2.jpg`. A second visit the same day continues the numbering.
-- A retried photo is not saved twice, and a visit is never written to the sheet twice.
-- Date can be today or up to `MAX_BACK_DAYS` back, never in the future.
-- The Checks column notes photos with no GPS, photos more than `MAX_DISTANCE_M` from the client's saved
-  location, and photos taken on a different day from the date picked.
+`api/index.js` + `vercel.json` run the whole app as one Vercel function, pre-filled with the sample visits. Vercel has no permanent disk, so everything is kept in temporary storage and is **re-created whenever the function restarts**. Anything the cleaner submits during the demo can disappear after a few minutes of inactivity. The real app must run on a PC or VM with a disk.
 
-## Run it
-Node 18 or newer, no packages to install.
-```
-cp .env.example .env
-npm start          # http://localhost:3000, saves to ./storage
-npm test
-```
-On a real phone the camera and GPS need HTTPS, so host it behind HTTPS.
+1. vercel.com, **Add New, Project**, import `ajxlv/hr-management-system`.
+2. Framework preset **Other**. Leave Build Command empty. Production branch: `wrs-cleaning-photos` (Settings, Git).
+3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234), `REPORT_KEY` (hr-demo), `SESSION_SECRET`.
+4. Deploy. Open the link on a phone: camera and GPS work because Vercel gives HTTPS.
 
-## Clients
-Edit `clients.json`. `folder` must match the existing OneDrive folder name exactly. `sheetTab` is the tab name
-(created automatically if missing). `lat`/`lon` are optional and turn on the distance check.
+## What HR gets
 
-## Connect OneDrive
-Set `STORAGE=onedrive` and `ONEDRIVE_ROOT` (the folder that holds the client folders).
-- **Microsoft 365 (business):** register an app in Microsoft Entra, add the Graph application permission
-  `Files.ReadWrite.All`, have an admin grant consent, and set `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`
-  and `MS_DRIVE_ID` (HR's drive id).
-- **Personal OneDrive:** register an app for personal accounts, sign in once with the HR account to get a refresh
-  token with `Files.ReadWrite offline_access`, and set `MS_CLIENT_ID` and `MS_REFRESH_TOKEN`. Leave `MS_TENANT_ID` empty.
+- OneDrive: `Clients/<client folder>/YYYY-MM-DD/Before_1.jpg, After_1.jpg, Bill_1.jpg, Wires_1.jpg`. A second visit the same day carries on the numbers. Nothing is overwritten.
+- **Dashboard page** at `/hr.html` (needs `REPORT_KEY`): every visit with chips for missing photos, defects and checks, filters, photo thumbnails and the Excel download. Thumbnails work when photos are saved to a folder on the app PC (`STORAGE=local`); with direct Microsoft Graph upload the page shows the folder path instead.
+- Excel sheet (`WRS_Cleaning_Status.xlsx`): one tab per client. Columns: Visit date, Submitted at (IST), Cleaner, Before, After, Bill, Wires, Defects, Defect details, Checks, Folder path. Boxes show green "Uploaded (n)" or red "Not uploaded". Checks lists photos with no GPS, more than 300 m from the site, or taken on a different day.
 
-## Connect the Google Sheet
-Set `SHEET=google`. Create a Google Cloud service account with the Sheets API enabled, share the sheet with the
-service account's email as Editor, and set `GOOGLE_SHEET_ID`, `GOOGLE_SA_EMAIL` and `GOOGLE_SA_KEY`.
+## Everyday jobs
 
-## Not done yet
-- No login: anyone with the link can upload. Add a PIN per cleaner before going live.
-- OneDrive and Google Sheet connections are written but not yet tested against real accounts.
-- Marathi/Hindi labels.
+| Job | Where |
+|---|---|
+| Add a client | Add a line to `server/clients.json` (`id`, `name`, exact OneDrive `folder`, optional `lat`/`lng`). **Create the folder in OneDrive first**. The app never creates client folders. |
+| Change the photo boxes | `BOXES` in `server/config.js` (and add an icon in `public/app.js` if you like). |
+| Change the words on screen | `T` at the top of `public/app.js`. |
+| Change the cleaner's name / PIN | `CLEANER_NAME`, `CLEANER_PIN` in the environment. |
+| Date window, GPS distance | `MAX_DAYS_BACK`, `GPS_MAX_DISTANCE_M`. |
+
+## Where photos go: two ways to reach company OneDrive
+
+**A. Easiest, no admin needed:** run the app on an HR office PC that already syncs OneDrive. Set `STORAGE=local` and `LOCAL_ROOT` to the OneDrive sync folder (for example `C:\\Users\\HR\\OneDrive - WRS`). Photos then sync to OneDrive by themselves. The PC must be switched on when the cleaner sends. Photos wait in the phone queue until then.
+
+**B. Direct to Microsoft Graph:** needs an admin to approve an app registration. Steps below.
+
+### B. Connect OneDrive through Microsoft Graph (Microsoft 365)
+
+1. Azure portal, **App registrations**, **New registration** (single tenant).
+2. **API permissions**: Microsoft Graph, **Application** permission `Files.ReadWrite.All`. Press **Grant admin consent**.
+   (Broad access: it can touch every OneDrive in the company. Ask your admin to restrict it to one site or user, e.g. with `Files.SelectedOperations.Selected`, if they can.)
+3. **Certificates & secrets**: create a client secret.
+4. Put these in the environment: `STORAGE=onedrive`, `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and `MS_USER` (the HR person's email whose OneDrive holds `Clients`) or `MS_DRIVE_ID`.
+5. Set `ROOT_FOLDER` if the folder is not called `Clients`.
+
+## Optional: HR downloads the Excel file
+
+Set `REPORT_KEY` to a long secret. HR can then open `https://<your-link>/report.xlsx?key=<that secret>` to download the latest file. Do not keep the same file open in Excel on the server PC, because Excel locks it. The app retries, but the new rows only appear after Excel is closed. Download a copy instead.
+
+## Optional: Google Sheet instead of Excel
+
+1. Google Cloud console: create a project, enable **Google Sheets API**, create a **service account**, then **Keys**, **Add key**, JSON.
+2. Open the Sheet, **Share**, add the service account's `client_email` as **Editor**.
+3. Set `SHEET=google`, `SHEET_ID` (the long id in the sheet URL), `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` (the `private_key` from the JSON, keep the `\n`).
+
+## Deploy (free)
+
+The app needs HTTPS and a disk that survives restarts, because `state.json` stops duplicate photos and rows. That rules out serverless hosting and free tiers that sleep or wipe the disk.
+
+**Cheapest: run it on an office PC and expose it with a free tunnel.**
+1. Install Node 18+, copy this folder, fill `.env`, run `npm start`.
+2. Give it a public HTTPS address with **Tailscale Funnel** (free, stable `*.ts.net` address, no domain needed) or **Cloudflare Tunnel** (free, needs a domain, about Rs 800 a year, or a random address that changes on restart).
+3. Set `CLEANER_PIN`, `SESSION_SECRET` and `REPORT_KEY`.
+
+The PC must be on when the cleaner sends. Photos wait safely on the phone until it is. Use an always-on PC if there is one.
+If the company has an Azure subscription, an App Service with persistent storage is the paid alternative.
+On the cleaner's phone: open the link in Chrome (Android) or Safari (iPhone) and choose **Add to Home Screen**.
+
+## How it behaves with no signal
+
+Submit saves everything inside the phone first, then sends photos in order, then the visit. "N items waiting for signal" shows until sent. Sending is retried when the signal returns and every 20 seconds while the app is open. **On iPhone the app must be open to send.** Photos retried after a drop are not saved twice, and a visit sent twice adds one row.
+
+## Notes for phase 2 (AI photo checks)
+
+`data/state.json` keeps every visit with each photo's box, file path, time, GPS and accuracy, and the final sheet row, so a later job can read it.
