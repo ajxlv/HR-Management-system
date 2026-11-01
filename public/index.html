@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d2e">
+  <title>WRS Cleaning Photos</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <section id="login" hidden>
+    <div class="brand big"><span class="sun"></span>WRS Solutions</div>
+    <h1>Enter your PIN</h1>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" aria-label="PIN">
+    <button id="pinGo" class="primary">OPEN</button>
+    <p id="pinMsg" class="msg" role="alert"></p>
+  </section>
+
+  <main id="app" hidden>
+    <header>
+      <div class="brand"><span class="sun"></span>WRS Solutions</div>
+      <div class="who" id="who"></div>
+    </header>
+    <div id="waiting" class="waiting" hidden></div>
+
+    <section class="card">
+      <h2><span class="n">1</span>Client</h2>
+      <select id="client" aria-label="Client"></select>
+    </section>
+
+    <section class="card">
+      <h2><span class="n">2</span>Date of work</h2>
+      <input id="date" type="date" aria-label="Date of work">
+    </section>
+
+    <section class="card">
+      <h2><span class="n">3</span>Photos</h2>
+      <div id="tiles" class="tiles"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="n">4</span>Any defects?</h2>
+      <div class="yn">
+        <button id="no" class="no" type="button">NO</button>
+        <button id="yes" class="yes" type="button">YES</button>
+      </div>
+      <textarea id="details" rows="3" placeholder="Write the problem here (if any)"></textarea>
+    </section>
+
+    <p id="msg" class="msg" role="alert"></p>
+    <button id="submit" class="primary">SUBMIT</button>
+  </main>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

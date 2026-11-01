@@ -1,0 +1,13 @@
+{
+  "name": "wrs-cleaning-photos",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cleaner photo upload app for WRS Solutions (HR management system)",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test test/*.test.js"
+  }
+}
