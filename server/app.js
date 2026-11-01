@@ -135,6 +135,12 @@ export function createApp(cfg, deps = {}) {
 
   // ---- http plumbing ----
   async function body(req, limit) {
+    // Some hosts (Vercel) read the body before our code runs and expose it as req.body; the stream is then used up.
+    if (req.body !== undefined && req.body !== null) {
+      const pre = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+      if (pre.length > limit) throw httpError(413, 'Too large');
+      return pre;
+    }
     const chunks = []; let size = 0;
     for await (const ch of req) {
       size += ch.length;
@@ -210,7 +216,7 @@ export function createApp(cfg, deps = {}) {
       if (p === '/api/health') return send(res, 200, { ok: true });
       if (p === '/api/login' && req.method === 'POST') {
         const { pin } = JSON.parse((await body(req, 2000)).toString() || '{}');
-        if (cfg.cleanerPin) checkPin(req.socket.remoteAddress, pin);
+        if (cfg.cleanerPin) checkPin(String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown', pin);
         return send(res, 200, { token: makeToken() });
       }
       if (!authed(req)) return send(res, 401, { error: 'Please sign in' });
@@ -227,7 +233,7 @@ export function createApp(cfg, deps = {}) {
     } catch (e) {
       const status = e instanceof SyntaxError ? 400 : e.status || 500;
       if (status >= 500) console.error(e);
-      send(res, status, { error: status >= 500 && !e.status ? 'Server error' : e.message });
+      send(res, status, { error: status >= 500 && !e.status ? (cfg.exposeErrors ? `Server error: ${e.message}` : 'Server error') : e.message });
     }
   });
   // In-process access (used to load demo data without any network call).
