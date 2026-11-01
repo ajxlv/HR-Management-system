@@ -15,10 +15,10 @@ const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'excel', CLEANER_NAME: 'Ramesh', 
 for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', cfg.rootFolder, c.folder), { recursive: true });
 
 const server = createApp(cfg);
-await new Promise((r) => server.listen(serve ? cfg.port : 0, r));
-await seedDemo(`http://localhost:${server.address().port}`, cfg);
+await seedDemo(server.direct, cfg);
+if (serve) await new Promise((r) => server.listen(cfg.port, r));
 mkdirSync('demo', { recursive: true });
 copyFileSync(path.join(dir, 'WRS_Cleaning_Status.xlsx'), 'demo/WRS_Cleaning_Status_demo.xlsx');
 console.log('Wrote demo/WRS_Cleaning_Status_demo.xlsx');
 if (serve) console.log('Demo running: cleaner  http://localhost:3000  (PIN 1234)\n              HR page  http://localhost:3000/hr.html  (key hr-demo)');
-else server.close();
+
