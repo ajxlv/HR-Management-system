@@ -1,6 +1,6 @@
 // Keeps the app opening with no signal. API calls are never cached.
-const CACHE = 'wrs-v2';
-const SHELL = ['/', '/style.css', '/app.js', '/manifest.webmanifest', '/icon.svg', '/logo.svg'];
+const CACHE = 'wrs-v3';
+const SHELL = ['/', '/style.css', '/app.js', '/manifest.webmanifest', '/icon-192.png', '/logo.png'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
