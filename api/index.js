@@ -14,25 +14,28 @@ const cfg = loadConfig({
   CLEANER_NAME: e.CLEANER_NAME || 'Ramesh', CLEANER_PIN: e.CLEANER_PIN || '1234',
   REPORT_KEY: e.REPORT_KEY || 'hr-demo', SESSION_SECRET: e.SESSION_SECRET || 'demo-secret',
 });
-for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', cfg.rootFolder, c.folder), { recursive: true });
-
 const app = createApp(cfg);
-const ready = (async () => {
-  await new Promise((r) => app.listen(0, '127.0.0.1', r));
-  if (!existsSync(path.join(dir, 'state.json'))) await seedDemo(`http://127.0.0.1:${app.address().port}`, cfg);
-})();
 
-let seeded = false, startError = null;
-ready.then(() => { seeded = true; }, (e) => { startError = e; }); // also stops an unhandled rejection from crashing the function
+// Start-up runs on the first request, not at import time, and loads the sample data in-process (no network).
+let started = null, seeded = false, startError = null;
+function start() {
+  return (started ||= (async () => {
+    for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', cfg.rootFolder, c.folder), { recursive: true });
+    if (!existsSync(path.join(dir, 'state.json'))) await seedDemo(app.direct, cfg);
+    seeded = true;
+    console.log('demo data ready');
+  })().catch((err) => { startError = err; console.error('demo start failed', err); }));
+}
 
 const json = (res, status, obj) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj, null, 2)); };
+const timeout = (ms) => new Promise((r) => setTimeout(() => r('timeout'), ms));
 
 export default async function handler(req, res) {
-  // /api/debug answers even if the demo failed to start, to show what is wrong.
+  // /api/debug answers before anything else starts, to show what is wrong.
   if (req.url.startsWith('/api/debug')) {
-    return json(res, 200, { node: process.version, url: req.url, host: req.headers.host, seeded, startError: startError && String(startError.stack || startError) });
+    return json(res, 200, { node: process.version, url: req.url, host: req.headers.host, started: !!started, seeded, startError: startError && String(startError.stack || startError) });
   }
-  await ready.catch(() => {});
+  if ((await Promise.race([start(), timeout(20000)])) === 'timeout') return json(res, 500, { error: 'Demo start-up took longer than 20 s' });
   if (startError) return json(res, 500, { error: 'Demo failed to start', detail: String(startError.stack || startError) });
   app.emit('request', req, res);
 }
