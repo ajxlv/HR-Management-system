@@ -12,7 +12,12 @@ const T = {
   rejected: (m) => `One item was refused by the server: ${m}`,
   gps: 'Getting location…',
 };
-const ICONS = { Before: '📷', After: '📷', Bill: '🧾', Wires: '🔌' };
+const ICONS = {
+  Before: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>',
+  After: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>',
+  Bill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+  Wires: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5"/></svg>',
+};
 const MAX_SIDE = 1600;
 
 const $ = (id) => document.getElementById(id);
@@ -141,7 +146,7 @@ function renderTiles() {
     if (box.camera) input.setAttribute('capture', 'environment');
     input.onchange = () => { onPick(box, [...input.files]); input.value = ''; };
     const hit = document.createElement('button'); hit.type = 'button'; hit.className = 'hit';
-    hit.innerHTML = `<span class="ico">${ICONS[box.key] || '📷'}</span><span class="lbl">${box.label}</span><span class="cnt">${list.length ? `✓ ${list.length} photo${list.length > 1 ? 's' : ''}` : 'Tap to take photo'}</span>`;
+    hit.innerHTML = `<span class="ico">${ICONS[box.key] || ICONS.Before}</span><span class="lbl">${box.label}</span><span class="cnt">${list.length ? `✓ ${list.length} photo${list.length > 1 ? 's' : ''}` : (box.camera ? 'Tap to take photo' : 'Tap to add photo')}</span>`;
     hit.onclick = () => input.click();
     const thumbs = document.createElement('div'); thumbs.className = 'thumbs';
     list.forEach((p) => {

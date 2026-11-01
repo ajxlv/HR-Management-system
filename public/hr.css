@@ -47,3 +47,6 @@ header { display:flex; align-items:center; justify-content:space-between; gap:12
 .lightbox button { position:absolute; top:14px; right:18px; font-size:2.4rem; background:none; border:0; color:#fff; cursor:pointer; }
 
 @media (max-width: 720px) { .visit > button { grid-template-columns: 1fr auto; } .chips { grid-column: 1 / -1; } .when { display:none; } }
+
+.logo { width:40px; height:40px; border-radius:11px; box-shadow:0 4px 12px -4px rgba(11,61,46,.5); }
+.logo.xl { width:84px; height:84px; border-radius:22px; display:block; margin:0 auto 14px; }
