@@ -1,6 +1,8 @@
-// Keeps the app opening with no signal. API calls are never cached.
-const CACHE = 'wrs-v4';
-const SHELL = ['/', '/style.css', '/app.js', '/manifest.webmanifest', '/icon-192.png', '/logo.png'];
+// Keeps the app opening with no signal, and sends queued photos in the background (Background Sync).
+// API calls are never cached.
+importScripts('/queue-core.js');
+const CACHE = 'wrs-v5';
+const SHELL = ['/', '/style.css', '/app.js', '/queue-core.js', '/manifest.webmanifest', '/icon-192.png', '/logo.png'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
@@ -14,4 +16,11 @@ self.addEventListener('fetch', (e) => {
     const net = fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; }).catch(() => hit);
     return hit || net;
   }));
+});
+
+// Android Chrome wakes this when signal returns, even if the app is closed. If something is still left
+// (server trouble, no signal), failing here makes the browser try again later with backoff.
+self.addEventListener('sync', (e) => {
+  if (e.tag !== 'wrs-send') return;
+  e.waitUntil(self.WRSQueue.flush().then((r) => { if (r.left && r.stopped !== 'auth') throw new Error('items still waiting'); }));
 });

@@ -8,7 +8,7 @@ const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'd
 const FILE = { Before: 'before', After: 'after', Bill: 'bill', Wires: 'wires' };
 const DAY = 86400000;
 
-export async function seedDemo(direct, cfg) {
+export function createVisitSender(direct, cfg) {
   const now = Date.now(), date = (back) => istDate(now - back * DAY);
   const sample = (box, i) => readFileSync(path.join(SAMPLES, `${FILE[box]}-${box === 'Bill' ? 1 : (i % (box === 'Wires' ? 2 : 3)) + 1}.jpg`));
   // random trailing bytes so two samples in one visit are never byte-identical (the app drops exact duplicates)
@@ -28,6 +28,11 @@ export async function seedDemo(direct, cfg) {
     await direct.visit({ visit: id, client, date: d, defects, details });
   }
 
+  return visit;
+}
+
+export async function seedDemo(direct, cfg) {
+  const visit = createVisitSender(direct, cfg);
   await visit({ client: 'c01', back: 4, photos: [['Before', 3], ['After', 3], ['Bill', 1], ['Wires', 2]] });
   await visit({ client: 'c01', back: 1, photos: [['Before', 2], ['After', 2], ['Bill', 1], ['Wires', 1]], defects: 'Yes', details: 'Two panels cracked on the east side. Bird nest near inverter.' });
   await visit({ client: 'c02', back: 3, photos: [['Before', 3], ['After', 3], ['Bill', 1], ['Wires', 2]] });
