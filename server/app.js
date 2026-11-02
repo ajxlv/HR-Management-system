@@ -20,7 +20,7 @@ export function createApp(cfg, deps = {}) {
   const state = new State(path.join(cfg.dataDir, 'state.json'));
   const storage = deps.storage || (cfg.storage === 'onedrive' ? new OneDriveStorage(cfg.ms) : new LocalStorage(cfg.localRoot || path.join(cfg.dataDir, 'onedrive')));
   const sheet = deps.sheet || (cfg.sheet === 'google'
-    ? new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google }, HEADERS, BOXES.length)
+    ? new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google, logoUrl: cfg.logoUrl, rootFolder: cfg.rootFolder, clients: cfg.clients }, HEADERS, BOXES.length)
     : cfg.sheet === 'csv' ? new CsvSheet(cfg.dataDir, HEADERS)
     : new ExcelSheet(path.join(cfg.dataDir, 'WRS_Cleaning_Status.xlsx'), HEADERS, BOXES.length));
   const mutex = new Mutex();
@@ -126,10 +126,39 @@ export function createApp(cfg, deps = {}) {
         ...BOXES.map((x) => (counts[x.key] ? `Uploaded (${counts[x.key]})` : 'Not uploaded')),
         defects, details, checksFor(v, c), `${cfg.rootFolder}/${c.folder}/${b.date}`,
       ];
-      await sheet.appendRow(c.name, row);
-      v.submitted = { at: now(), defects, details, counts, row };
+      // The visit is saved first. Writing the row to the sheet can fail (Google down, sheet not shared yet,
+      // Excel file open): then the row waits in state.json and is retried every minute. It is never written twice.
+      v.submitted = { at: now(), defects, details, counts, row, sheetDone: false };
       await state.save();
-      return { ok: true };
+      const pushed = await pushRow(v);
+      return { ok: true, sheet: pushed ? 'written' : 'waiting' };
+    });
+  }
+
+  // Must be called inside the mutex.
+  async function pushRow(v) {
+    const c = clientById.get(v.client);
+    try {
+      await sheet.appendRow(c.name, v.submitted.row, { client: c });
+    } catch (e) {
+      v.submitted.lastError = typeof sheet.explain === 'function' ? sheet.explain(e) : String(e.message || e);
+      console.error(`Sheet row for visit ${v.id} is waiting: ${v.submitted.lastError}`);
+      await state.save().catch(() => {});
+      return false;
+    }
+    v.submitted.sheetDone = true; delete v.submitted.lastError;
+    await state.save();
+    return true;
+  }
+
+  const waiting = () => Object.values(state.data.visits).filter((v) => v.submitted && v.submitted.sheetDone === false).sort((a, b) => a.submitted.at - b.submitted.at);
+
+  // Tries every waiting row, oldest first. Stops at the first failure so the order stays right.
+  function retryPending() {
+    return mutex.run(async () => {
+      let written = 0;
+      for (const v of waiting()) { if (!(await pushRow(v))) break; written++; }
+      return { written, left: waiting().length };
     });
   }
 
@@ -183,7 +212,7 @@ export function createApp(cfg, deps = {}) {
         return {
           id: v.id, client: c?.name || v.client, date: v.date, submittedAt: row[1], cleaner: row[2],
           counts: v.submitted.counts, defects: v.submitted.defects, details: v.submitted.details,
-          checks: row[BOXES.length + 5], folder: row[BOXES.length + 6], at: v.submitted.at,
+          checks: row[BOXES.length + 5], folder: row[BOXES.length + 6], at: v.submitted.at, sheetPending: v.submitted.sheetDone === false,
           photos: Object.entries(v.photos).map(([hash, ph]) => ({ hash, box: ph.box, name: ph.name })).sort((a, b) => a.name.localeCompare(b.name)),
         };
       }).sort((a, b) => b.at - a.at);
@@ -237,6 +266,12 @@ export function createApp(cfg, deps = {}) {
     }
   });
   // In-process access (used to load demo data without any network call).
-  server.direct = { photo: savePhoto, visit: submitVisit };
+  server.direct = { photo: savePhoto, visit: submitVisit, retryPending };
+  server.sheet = sheet;
+  if (cfg.sheetRetryMs > 0) {
+    const timer = setInterval(() => { if (waiting().length) retryPending().catch(() => {}); }, cfg.sheetRetryMs);
+    timer.unref();
+    server.on('close', () => clearInterval(timer));
+  }
   return server;
 }

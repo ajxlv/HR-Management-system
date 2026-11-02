@@ -11,6 +11,7 @@ Everything below is a **detail**, not a build task. The app already runs without
 | 5 | Cleaner's PIN (4-6 digits) | HR | `CLEANER_PIN` | `1234` |
 | 6 | HR dashboard key (a long password) | HR | `REPORT_KEY` | `hr-demo` |
 | 7 | A long random text for sessions | us | `SESSION_SECRET` | demo value |
+| 7b | Google sheet id, key file path, logo link | HR / you | `SHEET_ID`, `GOOGLE_KEY_FILE`, `LOGO_URL` in `.env` | demo sheet id |
 | 8 | Free public HTTPS link (Tailscale Funnel or Cloudflare Tunnel) | IT | tunnel setup, see README | none yet |
 | 9 | Allowed days back for the work date | HR | `MAX_DAYS_BACK` | 7 |
 | 10 | "Too far from site" distance | HR | `GPS_MAX_DISTANCE_M` | 300 m |
