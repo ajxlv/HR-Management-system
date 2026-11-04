@@ -2,22 +2,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { MAX_INVERTERS } from './form.js';
+
 const here = path.dirname(fileURLToPath(import.meta.url));
-
-// ONE place to change the photo boxes. Order here = order on screen.
-//   camera: true  -> opens the camera directly
-//   gps:    true  -> location is stamped on the photo and checked
-export const BOXES = [
-  { key: 'Before', label: 'BEFORE', camera: true,  gps: true  },
-  { key: 'After',  label: 'AFTER',  camera: true,  gps: true  },
-  { key: 'Bill',   label: 'BILL',   camera: false, gps: false },
-  { key: 'Wires',  label: 'WIRES',  camera: true,  gps: true  },
-];
-
-export const HEADERS = [
-  'Visit date', 'Submitted at (IST)', 'Cleaner', ...BOXES.map((b) => b.key),
-  'Defects', 'Defect details', 'Checks', 'Photo folder',
-];
 
 // Google credentials: either GOOGLE_KEY_FILE (path to the downloaded JSON key) or GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY.
 // The private key may have real newlines or the two characters \n, and may be wrapped in quotes.
@@ -62,6 +49,11 @@ export function loadConfig(env = process.env, overrides = {}) {
     clientsFile: path.join(here, 'clients.json'),
     ...overrides,
   };
-  cfg.clients = JSON.parse(readFileSync(cfg.clientsFile, 'utf8'));
+  cfg.warnings = [];
+  cfg.clients = JSON.parse(readFileSync(cfg.clientsFile, 'utf8')).map((c) => {
+    if (Number.isInteger(c.inverters) && c.inverters >= 1 && c.inverters <= MAX_INVERTERS) return c;
+    cfg.warnings.push(`Client "${c.name}" has no valid "inverters" (1 to ${MAX_INVERTERS}) in clients.json. Using 1.`);
+    return { ...c, inverters: 1 };
+  });
   return cfg;
 }

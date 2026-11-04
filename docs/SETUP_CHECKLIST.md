@@ -4,7 +4,7 @@ Everything below is a **detail**, not a build task. The app already runs without
 
 | # | What we need | Who knows it | Where it goes | Demo value now |
 |---|---|---|---|---|
-| 1 | Real client list: name, **exact** OneDrive folder name, site lat/long (optional) | HR | `server/clients.json` | 6 demo clients |
+| 1 | Real client list: name, **exact** OneDrive folder name, **number of inverters**, site lat/long (optional) | HR | `server/clients.json` (`inverters`) | 6 demo clients with 1, 2, 4 and 6 inverters |
 | 2 | Name of the OneDrive folder that holds all client folders | HR | `ROOT_FOLDER` in `.env` | `Clients` |
 | 3 | Which PC runs the app, and the path of its OneDrive sync folder | HR / IT | `LOCAL_ROOT` in `.env` (with `STORAGE=local`) | demo folder inside `data/` |
 | 4 | Cleaner's name | HR | `CLEANER_NAME` | `Ramesh` |
@@ -23,3 +23,14 @@ Everything below is a **detail**, not a build task. The app already runs without
 3. Does HR want the Excel file, the dashboard page, or both? Both are ready.
 4. Should old visits (more than a month) move into an archive tab/file?
 5. Phase 2 (AI check on how clean the panels are): do we start collecting the photos now? We already store the structured records for it.
+
+## Decided for the visit form
+
+- Wires box: **removed**. English only. Overall status: **Completed / Partly completed / Not completed**. "Internet" means the plant's monitoring/data logger is online.
+- Every box needs a photo and every checklist question needs an answer before Submit works.
+
+## Still open
+
+- Number of inverters for every real client (a client without `inverters` gets 1 and a warning in the log).
+- Do the existing Google Sheet tabs hold real visits? If so they need to be renamed before the new layout starts (the columns changed).
+- Marathi labels, if HR wants them later: someone who speaks Marathi should write the words for ON, OFF and the checklist.
