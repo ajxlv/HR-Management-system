@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 
 loadEnvFile();
 const cfg = loadConfig();
+for (const w of cfg.warnings) console.warn(`WARNING: ${w}`);
 if (!cfg.cleanerPin) console.warn('WARNING: CLEANER_PIN is empty, so there is no login. Set it before go-live.');
 const app = createApp(cfg);
 app.listen(cfg.port, () => {

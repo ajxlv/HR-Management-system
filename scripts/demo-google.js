@@ -1,7 +1,7 @@
 // npm run demo:google : sends 3 sample visits into the REAL Google Sheet so you can see the formatted layout.
-//   Sharma Residence : complete visit
-//   Patil Agro       : one box missing (no Wires)
-//   Patil Agro       : visit with a reported defect
+//   Sharma Residence : complete visit (2 inverters, everything ON)
+//   Patil Agro       : Challan and Inverter 3 photo missing, no customer signature
+//   Patil Agro       : OFF items, location not verified, a defect (4 inverters)
 // Photos are saved in demo-output-google/ (not in OneDrive).
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -22,9 +22,9 @@ if (!check.ok) process.exit(1);
 
 const app = createApp(cfg);
 const visit = createVisitSender(app.direct, cfg);
-await visit({ client: 'c01', back: 1, photos: [['Before', 3], ['After', 3], ['Bill', 1], ['Wires', 2]] });
-await visit({ client: 'c02', back: 1, photos: [['Before', 2], ['After', 2], ['Bill', 1]] });
-await visit({ client: 'c02', back: 0, photos: [['Before', 2], ['After', 2], ['Bill', 1], ['Wires', 1]], defects: 'Yes', details: 'Two panels cracked on the east side. Bird nest near inverter.' });
+await visit({ client: 'c01', back: 1 });                                                       // complete, all ON
+await visit({ client: 'c02', back: 1, photos: { Challan: 0, Inverter3: 0 }, sign: { customer: 'No' }, overall: 'Partly completed' });   // missing boxes and a signature
+await visit({ client: 'c02', back: 0, off: ['MCB', 'Internet'], na: ['SPD'], location: 'gallery', defects: 'Yes', details: 'Two panels cracked on the east side. MCB tripped on string 3.' });
 const left = await app.direct.retryPending();
 console.log(left.left ? `${left.left} row(s) could not be written yet; they stay queued in ${dir}.` : '3 visits written.');
 console.log(`Open: https://docs.google.com/spreadsheets/d/${cfg.sheetId}`);

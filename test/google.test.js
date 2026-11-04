@@ -7,38 +7,49 @@ import path from 'node:path';
 import { createFakeGoogle } from '../testlib/fake-google.js';
 import { GoogleSheet } from '../server/sheets/google.js';
 import { explain, fromApiResponse } from '../server/sheets/google-errors.js';
-import { HEADERS, BOXES, loadConfig, loadGoogleCredentials } from '../server/config.js';
+import { loadConfig, loadGoogleCredentials } from '../server/config.js';
+import { HEADERS, colIndex, COLUMNS } from '../server/form.js';
+import { okAnswers, rowOf, fakeVisit } from '../testlib/helpers.js';
 import { createApp } from '../server/app.js';
-import { COL } from '../server/sheets/layout.js';
+import { letter, CLIENT_TAB, OVERVIEW_HEADERS } from '../server/sheets/layout.js';
 
 const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 const clients = loadConfig({}).clients;
 const make = (extra = {}, fake = createFakeGoogle()) => ({
   fake,
-  sheet: new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@wrs-hr.iam.gserviceaccount.com', privateKey, rootFolder: 'Clients', clients, ...extra }, HEADERS, BOXES.length, { fetch: fake.fetch, now: () => Date.parse('2026-11-02T10:00:00Z') }),
+  sheet: new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@wrs-hr.iam.gserviceaccount.com', privateKey, rootFolder: 'Clients', clients, ...extra }, HEADERS, { fetch: fake.fetch, now: () => Date.parse('2026-11-02T10:00:00Z') }),
 });
-const row = (o = {}) => ['2026-11-02', '2026-11-02 15:30', 'Ramesh', 'Uploaded (2)', 'Uploaded (1)', 'Uploaded (1)', 'Not uploaded', 'Yes', 'Cracked panel', 'After_1: no GPS', 'Clients/Sharma Residence/2026-11-02'].map((v, i) => o[i] ?? v);
+// A full 28-cell row for client 0 (Sharma Residence, 2 inverters), like the app builds it
+const row = (o = {}) => { const r = rowOf(clients[0], { photos: { Before: 2, After: 1, Inverter1: 1, Challan: 1 }, answers: okAnswers({ electrical: { MCB: 'OFF' } }), defects: 'Yes', details: 'Cracked panel' }); for (const [k, v] of Object.entries(o)) r[/^\d+$/.test(k) ? +k : HEADERS.indexOf(k)] = v; return r; };
 
-test('new client tab: banner, header at row 4, data from row 5, appended below the banner', async () => {
+test('new client tab: banner, group band, header at row 5, data from row 6, appended below the banner', async () => {
   const { fake, sheet } = make({ logoUrl: 'https://example.com/logo.png' });
   await sheet.appendRow('Sharma Residence', row(), { client: clients[0] });
   await sheet.appendRow('Sharma Residence', row({ 0: '2026-11-03' }), { client: clients[0] });
-  const t = 'Sharma Residence';
-  assert.equal(fake.cell(t, 'A1'), '=IMAGE("https://example.com/logo.png", 1)');
-  assert.equal(fake.cell(t, 'B1'), 'Sharma Residence: Panel Cleaning Visits');
-  assert.match(fake.cell(t, 'A2'), /^Photos: OneDrive \/ Clients \/ Sharma Residence  ·  Last updated: 2026-11-02 \d\d:\d\d IST$/);
-  assert.deepEqual(HEADERS.map((_, i) => fake.cell(t, `${String.fromCharCode(65 + i)}4`)), HEADERS);
-  assert.deepEqual(fake.appended.map((a) => a.row), [5, 6]);                       // never on rows 1 to 4
+  const t = 'Sharma Residence', cell = (c) => fake.cell(t, c);
+  assert.equal(cell('A1'), '=IMAGE("https://example.com/logo.png", 1)');
+  assert.equal(cell('D1'), 'Sharma Residence: Panel Cleaning Visits');
+  assert.match(cell('A2'), /^Last updated: 2026-11-02 \d\d:\d\d IST$/);
+  assert.equal(cell('D2'), 'Photos: OneDrive / Clients / Sharma Residence');
+  // the group band above the header: Photos | Electrical checklist | Signatures | Work done | Result
+  assert.deepEqual(['D4', 'I4', 'P4', 'R4', 'X4'].map(cell), ['Photos', 'Electrical checklist', 'Signatures', 'Work done', 'Result']);
+  assert.deepEqual(HEADERS.map((_, i) => cell(`${letter(i)}5`)), HEADERS);
+  assert.deepEqual(fake.appended.map((a) => a.row), [6, 7]);                       // never on rows 1 to 5
   assert.equal(fake.appended[0].option, 'USER_ENTERED');                           // real date, not text
-  assert.equal(fake.sheet(t).frozen, 4);
-  assert.ok(fake.sheet(t).filter, 'basic filter set');
-  assert.equal(fake.sheet(t).bands.length, 1);
-  assert.equal(fake.sheet(t).cf.length, 5);                                        // uploaded, not uploaded, yes, no, checks
-  assert.equal(fake.sheet(t).merges.length, 2);                                    // title and sub-line
-  const widths = fake.sheet(t).requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'COLUMNS');
-  assert.equal(widths.length, HEADERS.length);
-  const rows = fake.sheet(t).requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'ROWS').map((r) => r.updateDimensionProperties.properties.pixelSize);
-  assert.deepEqual(rows, [56, 26, 10, 32]);
+  assert.equal(fake.appended[0].values.length, 28);
+  const sh = fake.sheet(t);
+  assert.equal(sh.frozen, 5); assert.equal(sh.frozenCols, 3);                      // header rows, and date + submitted at + cleaner
+  assert.ok(sh.filter, 'basic filter set');
+  assert.equal(sh.bands.length, 1);
+  assert.equal(sh.cf.length, 23);                                                  // see layout.js: uploaded/not x4, inverters x2, ON/OFF/N/A, sign, work, overall x3, defects x2, checks
+  // Google refuses to freeze columns through a merged cell: no merge may cross the line after column 3
+  assert.ok(sh.merges.every((m) => m.endColumnIndex <= 3 || m.startColumnIndex >= 3), 'no merge crosses the freeze line');
+  assert.equal(sh.merges.length, 4 + 1 + 5);                                       // logo, title, updated, photos line, blank corner, five groups
+  assert.equal(sh.requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'COLUMNS').length, HEADERS.length);
+  const heights = sh.requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'ROWS').map((r) => r.updateDimensionProperties.properties.pixelSize);
+  assert.deepEqual(heights, CLIENT_TAB.heights);
+  const widths = sh.requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'COLUMNS').map((r) => r.updateDimensionProperties.properties.pixelSize);
+  assert.deepEqual(widths, COLUMNS.map((c) => c.width));
 });
 
 test('no logo url: bold brand text instead of IMAGE', async () => {
@@ -47,27 +58,53 @@ test('no logo url: bold brand text instead of IMAGE', async () => {
   assert.equal(fake.cell('Sharma Residence', 'A1'), 'WRS Energy');
 });
 
-test('Overview tab is first and uses live formulas', async () => {
+test('colour rules cover ON / OFF / N/A, Yes / No, Inverters and the overall status', async () => {
+  const { fake, sheet } = make();
+  await sheet.appendRow('Sharma Residence', row(), { client: clients[0] });
+  const rules = fake.sheet('Sharma Residence').cf.map((r) => ({ cols: [r.ranges[0].startColumnIndex, r.ranges[0].endColumnIndex], type: r.booleanRule.condition.type, v: r.booleanRule.condition.values[0].userEnteredValue, bg: r.booleanRule.format.backgroundColor }));
+  const hc = (h) => HEADERS.indexOf(h);
+  const at = (col, v) => rules.find((r) => r.cols[0] <= hc(col) && hc(col) < r.cols[1] && r.v === v);
+  const colour = (rule) => { const { red: r, green: g, blue: b } = rule.bg; return Math.abs(r - g) < 0.03 && Math.abs(g - b) < 0.05 ? 'grey' : r > 0.9 && g < 0.9 ? 'red' : g > 0.9 && r < 0.9 ? 'green' : 'amber'; };
+  assert.equal(colour(at('MCB', 'ON')), 'green'); assert.equal(colour(at('MCB', 'OFF')), 'red'); assert.equal(colour(at('MCB', 'N/A')), 'grey');
+  assert.equal(colour(at('Customer signature', 'No')), 'red'); assert.equal(colour(at('Supervisor signature', 'Yes')), 'green');
+  assert.equal(colour(at('Washed with water', 'No')), 'red'); assert.equal(colour(at('After photos taken', 'Yes')), 'green');
+  assert.equal(colour(at('Overall status', 'Not completed')), 'red'); assert.equal(colour(at('Overall status', 'Completed')), 'green'); assert.ok(at('Overall status', 'Partly completed'));
+  assert.equal(colour(at('Bill', 'Not uploaded')), 'red'); assert.equal(colour(at('Before', 'Uploaded')), 'green');
+  const inv = rules.filter((r) => r.cols[0] === colIndex('Inverters'));
+  assert.equal(inv.length, 2);
+  assert.ok(inv.every((r) => r.type === 'CUSTOM_FORMULA' && r.v.includes('FIND(" of "')), 'Inverters is judged from "n of m uploaded"');
+  assert.ok(rules.some((r) => r.cols[0] === colIndex('checks') && r.v.includes('<>"OK"')), 'Checks amber when not OK');
+});
+
+test('Overview tab is first, with the new OFF and not-completed counts, as live formulas', async () => {
   const { fake, sheet } = make();
   await sheet.appendRow('Sharma Residence', row(), { client: clients[0] });
   await sheet.appendRow('Patil Agro Industries', row(), { client: clients[1] });
   assert.equal(fake.sheets[0].title, 'Overview');
   assert.equal(fake.cell('Overview', 'B1'), 'WRS Panel Cleaning: Overview');
-  assert.equal(fake.cell('Overview', 'A5'), 'Sharma Residence');
-  assert.equal(fake.cell('Overview', 'A6'), 'Patil Agro Industries');
-  const f = ['B5', 'C5', 'D5', 'E5', 'F5'].map((c) => fake.cell('Overview', c));
-  assert.match(f[0], /MAXIFS/); assert.match(f[1], /COUNTIFS/); assert.match(f[2], /SUMPRODUCT/); assert.match(f[3], /COUNTIFS.*"Yes"/);
-  assert.equal(f[4], `=HYPERLINK("#gid=${fake.sheet('Sharma Residence').id}","Open")`);
-  assert.ok(fake.sheet('Overview').cf.length >= 1, 'red highlight rule for open defects');
+  assert.deepEqual(OVERVIEW_HEADERS.map((_, i) => fake.cell('Overview', `${letter(i)}4`)), OVERVIEW_HEADERS);
+  assert.ok(OVERVIEW_HEADERS.includes('Visits with any OFF item') && OVERVIEW_HEADERS.includes('Visits not completed'));
+  assert.equal(fake.cell('Overview', 'A5'), 'Sharma Residence'); assert.equal(fake.cell('Overview', 'A6'), 'Patil Agro Industries');
+  const f = Object.fromEntries(OVERVIEW_HEADERS.map((h, i) => [h, fake.cell('Overview', `${letter(i)}5`)]));
+  assert.match(f['Last visit date'], /MAXIFS/); assert.match(f['Visits this month'], /COUNTIFS/);
+  assert.match(f['Visits with missing photos'], /SUMPRODUCT.*"Not uploaded".*FIND\(" of "/);
+  assert.match(f['Visits with any OFF item'], /SUMPRODUCT.*"OFF"/);
+  assert.match(f['Visits not completed'], /COUNTIFS\(.*"<>Completed".*"<>"\)/);
+  assert.match(f['Open defects'], /COUNTIFS.*"Yes"/);
+  assert.equal(f['Client tab'], `=HYPERLINK("#gid=${fake.sheet('Sharma Residence').id}","Open")`);
+  // the formulas look at the right client-tab columns: ACDB to Earthing Trip for OFF, Overall status for "not completed"
+  assert.ok(f['Visits with any OFF item'].includes('$' + letter(colIndex('e:ACDB')) + '$6') && f['Visits with any OFF item'].includes('$' + letter(colIndex('e:EarthingTrip')) + '$6'));
+  assert.ok(f['Visits not completed'].includes('$' + letter(colIndex('overall')) + '$6'));
+  assert.ok(fake.sheet('Overview').cf.length >= 3, 'red highlight rules (open defects, any OFF, not completed)');
 });
 
 test('text that looks like a formula, number or date stays text; folder link works', async () => {
   const { fake, sheet } = make();
-  await sheet.appendRow('Sharma Residence', row({ 8: '=1+1', 9: '3/4 panels' }), { client: { ...clients[0], folderUrl: 'https://wrs.sharepoint.com/Clients/Sharma' } });
+  await sheet.appendRow('Sharma Residence', row({ 'Defect details': '=1+1', Checks: '3/4 panels' }), { client: { ...clients[0], folderUrl: 'https://wrs.sharepoint.com/Clients/Sharma' } });
   const a = fake.appended[0].values;
-  assert.equal(a[COL.details], "'=1+1");
-  assert.equal(a[COL.checks], "'3/4 panels");
-  assert.equal(a[COL.folder], '=HYPERLINK("https://wrs.sharepoint.com/Clients/Sharma","Clients/Sharma Residence/2026-11-02")');
+  assert.equal(a[colIndex('details')], "'=1+1");
+  assert.equal(a[colIndex('checks')], "'3/4 panels");
+  assert.equal(a[colIndex('folder')], '=HYPERLINK("https://wrs.sharepoint.com/Clients/Sharma","Clients/Sharma Residence/2026-11-02")');
 });
 
 test('format:sheet can run twice without stacking banding or rules', async () => {
@@ -116,12 +153,12 @@ const jpeg = (t) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer
 function appWith(fake, dir) {
   const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'csv' }, { sheetRetryMs: 0 });
   for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', 'Clients', c.folder), { recursive: true });
-  const sheet = new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@x', privateKey, clients: cfg.clients }, HEADERS, BOXES.length, { fetch: fake.fetch });
+  const sheet = new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@x', privateKey, clients: cfg.clients }, HEADERS, { fetch: fake.fetch });
   return createApp(cfg, { sheet, now: () => Date.parse('2026-11-02T10:00:00Z') });
 }
 const send = async (app, id, details = '') => {
   await app.direct.photo({ visit: id, client: 'c01', date: '2026-11-02', box: 'Before', taken: Date.parse('2026-11-02T04:00:00Z'), lat: 19.9976, lng: 73.7899, acc: 9 }, jpeg(id));
-  return app.direct.visit({ visit: id, client: 'c01', date: '2026-11-02', defects: details ? 'Yes' : 'No', details });
+  return app.direct.visit({ visit: id, client: 'c01', date: '2026-11-02', defects: details ? 'Yes' : 'No', details, answers: okAnswers() });
 };
 
 test('retry queue: a failed row waits, is retried, and is written exactly once', async () => {
@@ -153,7 +190,7 @@ test('retry queue survives a restart and keeps the order', async () => {
   fake.always = null;
   app = appWith(fake, dir);                                                 // server restarted: state.json is reloaded
   assert.deepEqual(await app.direct.retryPending(), { written: 2, left: 0 });
-  assert.deepEqual(fake.appended.map((x) => x.values[COL.defects]), ['No', 'Yes']);
+  assert.deepEqual(fake.appended.map((x) => x.values[colIndex('defects')]), ['No', 'Yes']);
   assert.deepEqual(await app.direct.retryPending(), { written: 0, left: 0 });
   assert.equal(fake.appended.length, 2);
   rmSync(dir, { recursive: true, force: true });
