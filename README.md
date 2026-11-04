@@ -69,11 +69,74 @@ Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR 
 
 Set `REPORT_KEY` to a long secret. HR can then open `https://<your-link>/report.xlsx?key=<that secret>` to download the latest file. Do not keep the same file open in Excel on the server PC, because Excel locks it. The app retries, but the new rows only appear after Excel is closed. Download a copy instead.
 
-## Optional: Google Sheet instead of Excel
+## Google Sheet (HR's status view)
 
-1. Google Cloud console: create a project, enable **Google Sheets API**, create a **service account**, then **Keys**, **Add key**, JSON.
-2. Open the Sheet, **Share**, add the service account's `client_email` as **Editor**.
-3. Set `SHEET=google`, `SHEET_ID` (the long id in the sheet URL), `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` (the `private_key` from the JSON, keep the `\n`).
+Already done outside the code: Google Cloud project, service account, JSON key, Sheets API on, and the sheet shared with the service account's email as Editor.
+
+**1. Fill `.env`** (copy `.env.example` first if you have not):
+
+```
+SHEET=google
+SHEET_ID=<the long id from the sheet's address>
+GOOGLE_KEY_FILE=C:\keys\wrs-hr-key.json
+LOGO_URL=<optional, see below>
+```
+
+Keep the key file outside the project folder. Key files are also ignored by git, but never paste the key into chat or commit it.
+
+**2. Prove it works**
+
+```bash
+npm install
+npm run check:google
+```
+
+It prints `OK: wrote to '<sheet name>'`, or the exact fix. For example "Sheet not shared with ...: open the sheet, press Share, add this email as Editor", "Sheets API not enabled: enable it here <link>", or "Wrong SHEET_ID". The app runs the same check when it starts, and keeps working if it fails: visits are saved and their rows wait in `data/state.json`, then are retried every minute and never written twice.
+
+**3. See the formatted sheet without a phone**
+
+```bash
+npm run demo:google
+```
+
+Sends 3 sample visits (one complete, one with Wires missing, one with a defect) for 2 demo clients and prints the sheet link.
+
+**What the sheet looks like**
+- **Overview** tab first: one row per client with last visit, visits this month, visits with missing photos, open defects (red when above 0) and a link to the client's tab. All formulas, so hand edits are counted.
+- **One tab per client**, created on the first visit. Rows 1 to 3 are the banner (logo, "<Client>: Panel Cleaning Visits", photo folder and last-updated time). Row 4 is the header. Rows 1 to 4 are frozen. Visits start at row 5. Dates are real dates, so HR can sort and filter. Green "Uploaded (n)", red "Not uploaded", red or green Defects, amber Checks, light banding, thin borders and a filter on the header.
+
+Colours, columns and widths are all in `server/sheets/layout.js`. After changing it, or if someone breaks the formatting, run:
+
+```bash
+npm run format:sheet
+```
+
+**Photo folder as a link:** add `"folderUrl": "https://..."` to a client in `server/clients.json` (the folder's OneDrive web address). Without it the column shows plain text.
+
+**Logo in the sheet (`LOGO_URL`)**: the sheet needs a public web address for the logo.
+1. Upload `public/logo.png` to Google Drive, press Share, choose "Anyone with the link".
+2. Copy the file id from its link (the part between `/d/` and `/view`).
+3. Set `LOGO_URL=https://drive.google.com/thumbnail?id=<FILE_ID>&sz=w400`, then run `npm run format:sheet`.
+
+A raw GitHub link works instead if the repo is public. With `LOGO_URL` empty the banner shows the text "WRS Energy".
+
+## Test on your phone (free, no account)
+
+Camera and GPS only work over https, so use a Cloudflare quick tunnel while testing.
+
+```bash
+winget install --id Cloudflare.cloudflared
+```
+
+Close and reopen the terminal, start the app (`npm start`), then in a second terminal:
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+It prints a link like `https://something-random.trycloudflare.com`. Open it on the phone, sign in with `CLEANER_PIN`, and use Add to Home Screen. **The link changes every time you restart the tunnel.** For go-live use Tailscale Funnel (stable link, free), see Deploy below.
+
+Windows notes: `LOCAL_ROOT` can have backslashes and spaces, for example `LOCAL_ROOT=C:\Users\HR\OneDrive - WRS` (no quotes needed). `npm install` and `npm start` need only Node 18 or newer.
 
 ## Deploy (free)
 
@@ -90,7 +153,7 @@ On the cleaner's phone: open the link in Chrome (Android) or Safari (iPhone) and
 
 ## How it behaves with no signal
 
-Submit saves everything inside the phone first, then sends photos in order, then the visit. "N items waiting for signal" shows until sent. Sending is retried when the signal returns and every 20 seconds while the app is open. **On iPhone the app must be open to send.** Photos retried after a drop are not saved twice, and a visit sent twice adds one row.
+Submit saves everything inside the phone first, then sends photos in order, then the visit. "N items waiting for signal" shows until sent. On Android Chrome the phone sends by itself when signal returns, even if the app is closed (Background Sync). Elsewhere sending is retried every 20 seconds while the app is open. **On iPhone the app must be open to send.** Photos retried after a drop are not saved twice, and a visit sent twice adds one row.
 
 ## Notes for phase 2 (AI photo checks)
 

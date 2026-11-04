@@ -7,7 +7,8 @@ const T = {
   oldPhoto: 'This photo is old. Please take a NEW photo with the camera.',
   noPhotoIn: (list) => `No photo in: ${list}. Press SUBMIT again to send anyway.`,
   saved: '✓ Saved. Ready for the next visit.',
-  waiting: (n) => `${n} item${n === 1 ? '' : 's'} waiting for signal`,
+  waiting: (n) => `${n} item${n === 1 ? '' : 's'} waiting, will send automatically`,
+  waitingOpen: (n) => `${n} item${n === 1 ? '' : 's'} waiting for signal. Keep this app open.`,
   wrongPin: 'Wrong PIN. Try again.',
   rejected: (m) => `One item was refused by the server: ${m}`,
   gps: 'Getting location…',
@@ -27,55 +28,35 @@ const load = (k) => { try { return localStorage.getItem(k); } catch { return nul
 
 let cfg = null;
 let token = load('token') || '';
+// make sure the service worker also knows the token (older installs only had it in localStorage)
+if (token) window.WRSQueue.setMeta('token', token).catch(() => {});
 const form = { photos: {}, defects: null, warned: '' };
 
-// ---------- tiny IndexedDB queue ----------
-const dbp = new Promise((res, rej) => {
-  const r = indexedDB.open('wrs', 1);
-  r.onupgradeneeded = () => r.result.createObjectStore('queue', { keyPath: 'seq', autoIncrement: true });
-  r.onsuccess = () => res(r.result);
-  r.onerror = () => rej(r.error);
-});
-const tx = async (mode, fn) => {
-  const db = await dbp;
-  return new Promise((res, rej) => {
-    const t = db.transaction('queue', mode), s = t.objectStore('queue');
-    const out = fn(s);
-    t.oncomplete = () => res(out && 'result' in out ? out.result : undefined);
-    t.onerror = () => rej(t.error);
-  });
-};
-const queueAll = () => tx('readonly', (s) => s.getAll());
-const queueAdd = (items) => tx('readwrite', (s) => items.forEach((i) => s.add(i)));
-const queueDel = (seq) => tx('readwrite', (s) => s.delete(seq));
-
-// ---------- sending ----------
+// ---------- queue (shared with the service worker, see queue-core.js) ----------
+const Q = window.WRSQueue;
+const canBackgroundSync = 'serviceWorker' in navigator && 'SyncManager' in window;
 let flushing = false;
 async function flush() {
   if (flushing) return;
   flushing = true;
   try {
-    for (const item of (await queueAll()).sort((a, b) => a.seq - b.seq)) {
-      let r;
-      try {
-        r = item.type === 'photo'
-          ? await fetch('/api/photo?' + new URLSearchParams(item.params), { method: 'POST', body: item.blob, headers: auth() })
-          : await fetch('/api/visit', { method: 'POST', body: JSON.stringify(item.body), headers: auth() });
-      } catch { break; }                       // no signal: keep everything, try later
-      if (r.status === 401) { showLogin(); break; }
-      if (r.ok) { await queueDel(item.seq); continue; }
-      if (r.status >= 500 || r.status === 429) break; // server trouble: retry later
-      const e = await r.json().catch(() => ({}));    // refused for good: drop it, tell the user
-      await queueDel(item.seq);
-      say(T.rejected(e.error || r.status), 'err');
-    }
+    const r = await Q.flush();
+    if (r.stopped === 'auth') showLogin();
+    const rejected = await Q.getMeta('rejected');
+    if (rejected && rejected.length) { await Q.setMeta('rejected', undefined); say(T.rejected(rejected[0]), 'err'); }
   } finally { flushing = false; showWaiting(); }
 }
+// Ask the browser to send later even if the app is closed (Android Chrome). The in-page retry stays as the fallback.
+function askBackgroundSync() {
+  if (!canBackgroundSync) return;
+  navigator.serviceWorker.ready.then((reg) => reg.sync.register('wrs-send')).catch(() => {});
+}
 const auth = () => (token ? { Authorization: `Bearer ${token}` } : {});
+const saveToken = (t) => { token = t; store('token', t); Q.setMeta('token', t).catch(() => {}); };
 async function showWaiting() {
-  const n = (await queueAll()).length;
+  const n = (await Q.all()).length;
   $('waiting').hidden = !n;
-  $('waiting').textContent = n ? T.waiting(n) : '';
+  $('waiting').textContent = n ? (canBackgroundSync ? T.waiting(n) : T.waitingOpen(n)) : '';
 }
 
 // ---------- photos ----------
@@ -229,7 +210,8 @@ $('submit').onclick = async () => {
   }
   items.push({ type: 'visit', body: { visit, client, date, defects: form.defects, details: $('details').value.trim() } });
   try {
-    await queueAdd(items);                      // saved on the phone first, so nothing is lost
+    await Q.add(items);                         // saved on the phone first, so nothing is lost
+    askBackgroundSync();
   } catch { $('submit').disabled = false; return say('Could not save on this phone. Free some space and try again.', 'err'); }
 
   Object.values(form.photos).flat().forEach((p) => URL.revokeObjectURL(p.url));
@@ -266,7 +248,7 @@ $('pinGo').onclick = async () => {
   const r = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ pin: $('pin').value }) }).catch(() => null);
   if (!r) { $('pinMsg').textContent = 'No signal.'; $('pinMsg').className = 'msg err'; return; }
   if (!r.ok) { $('pinMsg').textContent = (await r.json()).error || T.wrongPin; $('pinMsg').className = 'msg err'; return; }
-  token = (await r.json()).token; store('token', token); $('pin').value = ''; $('pinMsg').textContent = ''; start();
+  saveToken((await r.json()).token); $('pin').value = ''; $('pinMsg').textContent = ''; start();
 };
 $('pin').onkeydown = (e) => { if (e.key === 'Enter') $('pinGo').click(); };
 

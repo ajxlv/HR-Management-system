@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,8 +16,23 @@ export const BOXES = [
 
 export const HEADERS = [
   'Visit date', 'Submitted at (IST)', 'Cleaner', ...BOXES.map((b) => b.key),
-  'Defects', 'Defect details', 'Checks', 'Folder path',
+  'Defects', 'Defect details', 'Checks', 'Photo folder',
 ];
+
+// Google credentials: either GOOGLE_KEY_FILE (path to the downloaded JSON key) or GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY.
+// The private key may have real newlines or the two characters \n, and may be wrapped in quotes.
+export function loadGoogleCredentials(env) {
+  let clientEmail = env.GOOGLE_CLIENT_EMAIL || '', privateKey = env.GOOGLE_PRIVATE_KEY || '', projectId = '';
+  if (env.GOOGLE_KEY_FILE) {
+    const file = path.resolve(env.GOOGLE_KEY_FILE);
+    if (!existsSync(file)) throw new Error(`GOOGLE_KEY_FILE not found: ${file}`);
+    let j;
+    try { j = JSON.parse(readFileSync(file, 'utf8')); } catch { throw new Error(`GOOGLE_KEY_FILE is not a valid JSON file: ${file}`); }
+    clientEmail = j.client_email || clientEmail; privateKey = j.private_key || privateKey; projectId = j.project_id || '';
+  }
+  privateKey = privateKey.trim().replace(/^"([\s\S]*)"$/, '$1').replace(/\\n/g, '\n').trim();
+  return { clientEmail, privateKey, projectId };
+}
 
 export function loadConfig(env = process.env, overrides = {}) {
   const num = (v, d) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? d : Number(v));
@@ -37,7 +52,9 @@ export function loadConfig(env = process.env, overrides = {}) {
     localRoot: env.LOCAL_ROOT || '',
     reportKey: env.REPORT_KEY || '',
     sheetId: env.SHEET_ID || '',
-    google: { clientEmail: env.GOOGLE_CLIENT_EMAIL, privateKey: env.GOOGLE_PRIVATE_KEY },
+    google: env.SHEET === 'google' ? loadGoogleCredentials(env) : {},
+    logoUrl: env.LOGO_URL || '',
+    sheetRetryMs: num(env.SHEET_RETRY_MS, 60000),
     maxDaysBack: num(env.MAX_DAYS_BACK, 7),
     photoMaxAgeSec: num(env.PHOTO_MAX_AGE_SEC, 180),
     gpsMaxDistanceM: num(env.GPS_MAX_DISTANCE_M, 300),
