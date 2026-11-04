@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BOXES, HEADERS } from './config.js';
+import { HEADERS, boxesFor, formConfig, validateAnswers, buildRow, attention, locationSourceFrom, photoCount, missingPhotos, colIndex } from './form.js';
 import { State } from './state.js';
 import { LocalStorage, httpError } from './storage/local.js';
 import { OneDriveStorage } from './storage/onedrive.js';
@@ -20,9 +20,9 @@ export function createApp(cfg, deps = {}) {
   const state = new State(path.join(cfg.dataDir, 'state.json'));
   const storage = deps.storage || (cfg.storage === 'onedrive' ? new OneDriveStorage(cfg.ms) : new LocalStorage(cfg.localRoot || path.join(cfg.dataDir, 'onedrive')));
   const sheet = deps.sheet || (cfg.sheet === 'google'
-    ? new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google, logoUrl: cfg.logoUrl, rootFolder: cfg.rootFolder, clients: cfg.clients }, HEADERS, BOXES.length)
+    ? new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google, logoUrl: cfg.logoUrl, rootFolder: cfg.rootFolder, clients: cfg.clients }, HEADERS)
     : cfg.sheet === 'csv' ? new CsvSheet(cfg.dataDir, HEADERS)
-    : new ExcelSheet(path.join(cfg.dataDir, 'WRS_Cleaning_Status.xlsx'), HEADERS, BOXES.length));
+    : new ExcelSheet(path.join(cfg.dataDir, 'WRS_Cleaning_Status.xlsx'), HEADERS));
   const mutex = new Mutex();
   const now = deps.now || (() => Date.now());
   const clientById = new Map(cfg.clients.map((c) => [c.id, c]));
@@ -56,7 +56,7 @@ export function createApp(cfg, deps = {}) {
     const back = daysBetween(date, istDate(now()));
     if (back < 0) throw httpError(400, 'Date is in the future');
     if (back > cfg.maxDaysBack) throw httpError(400, `Date is more than ${cfg.maxDaysBack} days back`);
-    if (box !== undefined && !BOXES.some((b) => b.key === box)) throw httpError(400, 'Unknown box');
+    if (box !== undefined && !boxesFor(c).some((b) => b.key === box)) throw httpError(400, 'Unknown box');
     return c;
   }
   const validId = (id) => /^[A-Za-z0-9-]{8,64}$/.test(id || '');
@@ -64,9 +64,8 @@ export function createApp(cfg, deps = {}) {
   // ---- handlers ----
   function config() {
     return {
-      cleanerName: cfg.cleanerName, boxes: BOXES, maxDaysBack: cfg.maxDaysBack,
-      photoMaxAgeSec: cfg.photoMaxAgeSec, today: istDate(now()),
-      clients: cfg.clients.map(({ id, name }) => ({ id, name })),
+      cleanerName: cfg.cleanerName, maxDaysBack: cfg.maxDaysBack, today: istDate(now()), form: formConfig(),
+      clients: cfg.clients.map((c) => ({ id: c.id, name: c.name, inverters: c.inverters, boxes: boxesFor(c) })),
     };
   }
 
@@ -75,7 +74,13 @@ export function createApp(cfg, deps = {}) {
     if (!validId(q.visit)) throw httpError(400, 'Bad visit id');
     if (!buffer.length || buffer[0] !== 0xff || buffer[1] !== 0xd8) throw httpError(400, 'Not a JPEG photo');
     if (buffer.length > cfg.maxPhotoBytes) throw httpError(413, 'Photo too large');
-    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const capture = q.cap === undefined || q.cap === '' ? 'camera' : q.cap;
+    if (capture !== 'camera' && capture !== 'gallery') throw httpError(400, 'Bad photo source');
+    if (q.src !== undefined && q.src !== '' && !['exif', 'phone', 'none'].includes(q.src)) throw httpError(400, 'Bad location source');
+    const takenSource = q.tsrc === undefined ? (q.taken ? 'camera' : '') : q.tsrc;
+    if (!['', 'exif', 'camera'].includes(takenSource)) throw httpError(400, 'Bad time source');
+    // A retry after a network drop sends the same bytes to the same box. The same picture in a DIFFERENT box is a different photo.
+    const hash = `${q.box}:${crypto.createHash('sha256').update(buffer).digest('hex')}`;
     return mutex.run(async () => {
       const v = state.visit(q.visit) || state.create(q.visit, { client: q.client, date: q.date });
       if (v.client !== q.client || v.date !== q.date) throw httpError(409, 'Photo does not match this visit');
@@ -83,52 +88,39 @@ export function createApp(cfg, deps = {}) {
       if (v.submitted) throw httpError(409, 'Visit already submitted');
       const saved = await storage.saveFile({ rootFolder: cfg.rootFolder, clientFolder: c.folder, date: q.date, box: q.box, buffer });
       const num = (x) => (x === undefined || x === '' || Number.isNaN(+x) ? null : +x);
+      const lat = num(q.lat), lng = num(q.lng);
       v.photos[hash] = {
-        box: q.box, name: saved.name, path: saved.path, takenAt: num(q.taken),
-        lat: num(q.lat), lng: num(q.lng), accuracy: num(q.acc), savedAt: now(),
+        box: q.box, name: saved.name, path: saved.path,
+        capture,                                                   // 'camera' (live shot) or 'gallery'
+        takenAt: num(q.taken), takenSource: takenSource,           // 'exif', 'camera' or '' (unknown)
+        lat, lng, accuracy: num(q.acc),
+        locationSource: locationSourceFrom(q.src, lat !== null && lng !== null),   // 'photo EXIF' | 'phone at upload' | 'none'
+        savedAt: now(),
       };
       await state.save();
       return { ok: true, name: saved.name };
     });
   }
 
-  function checksFor(v, client) {
-    const notes = [];
-    for (const p of Object.values(v.photos).sort((a, b) => a.name.localeCompare(b.name))) {
-      const box = BOXES.find((b) => b.key === p.box);
-      const label = p.name.replace('.jpg', '');
-      if (box.gps) {
-        if (p.lat === null || p.lng === null) notes.push(`${label}: no GPS`);
-        else if (client.lat !== undefined) {
-          const d = Math.round(distanceM(p.lat, p.lng, client.lat, client.lng));
-          if (d > cfg.gpsMaxDistanceM) notes.push(`${label}: ${d} m from site`);
-        }
-        if (p.takenAt && istDate(p.takenAt) !== v.date) notes.push(`${label}: taken on ${istDate(p.takenAt)}`);
-      }
-    }
-    return notes.length ? notes.join('; ') : 'OK';
-  }
-
   function submitVisit(b) {
     const c = validateCommon(b);
     if (!validId(b.visit)) throw httpError(400, 'Bad visit id');
     if (b.defects !== 'Yes' && b.defects !== 'No') throw httpError(400, 'Defects answer is required');
+    const answers = validateAnswers(b.answers);
     const details = String(b.details || '').trim().slice(0, 1000);
     return mutex.run(async () => {
       let v = state.visit(b.visit);
       if (v?.submitted) return { ok: true, duplicate: true };
       if (v && (v.client !== b.client || v.date !== b.date)) throw httpError(409, 'Visit does not match its photos');
       v = v || state.create(b.visit, { client: b.client, date: b.date });
-      const counts = Object.fromEntries(BOXES.map((x) => [x.key, Object.values(v.photos).filter((p) => p.box === x.key).length]));
-      const defects = details ? 'Yes' : b.defects;
-      const row = [
-        b.date, istDateTime(now()), cfg.cleanerName,
-        ...BOXES.map((x) => (counts[x.key] ? `Uploaded (${counts[x.key]})` : 'Not uploaded')),
-        defects, details, checksFor(v, c), `${cfg.rootFolder}/${c.folder}/${b.date}`,
-      ];
-      // The visit is saved first. Writing the row to the sheet can fail (Google down, sheet not shared yet,
-      // Excel file open): then the row waits in state.json and is retried every minute. It is never written twice.
-      v.submitted = { at: now(), defects, details, counts, row, sheetDone: false };
+      v.cleaner = cfg.cleanerName;
+      const boxes = boxesFor(c), defects = details ? 'Yes' : b.defects;
+      const row = buildRow({ visit: v, client: c, boxes, answers, defects, details, submittedAt: istDateTime(now()), rootFolder: cfg.rootFolder, gpsMaxDistanceM: cfg.gpsMaxDistanceM });
+      const counts = Object.fromEntries(boxes.map((x) => [x.key, photoCount(v, x.key)]));
+      // A required photo that never arrived is flagged in Checks (and shown as Not uploaded), never lost the visit.
+      // Every answer is kept here in the visit record, not only in the sheet.
+      v.answers = answers;
+      v.submitted = { at: now(), defects, details, answers, counts, missing: missingPhotos(v, boxes), checks: row[colIndex('checks')], row, sheetDone: false };
       await state.save();
       const pushed = await pushRow(v);
       return { ok: true, sheet: pushed ? 'written' : 'waiting' };
@@ -207,16 +199,16 @@ export function createApp(cfg, deps = {}) {
     if (!hrAllowed(req, url)) return send(res, 401, { error: 'Wrong or missing HR key' });
     if (p === '/api/hr/visits') {
       const visits = Object.values(state.data.visits).filter((v) => v.submitted).map((v) => {
-        const c = clientById.get(v.client);
-        const row = v.submitted.row;
+        const c = clientById.get(v.client), sub = v.submitted, boxes = c ? boxesFor(c) : [];
         return {
-          id: v.id, client: c?.name || v.client, date: v.date, submittedAt: row[1], cleaner: row[2],
-          counts: v.submitted.counts, defects: v.submitted.defects, details: v.submitted.details,
-          checks: row[BOXES.length + 5], folder: row[BOXES.length + 6], at: v.submitted.at, sheetPending: v.submitted.sheetDone === false,
-          photos: Object.entries(v.photos).map(([hash, ph]) => ({ hash, box: ph.box, name: ph.name })).sort((a, b) => a.name.localeCompare(b.name)),
+          id: v.id, client: c?.name || v.client, date: v.date, submittedAt: sub.row[colIndex('at')], cleaner: v.cleaner || sub.row[colIndex('cleaner')],
+          counts: sub.counts, defects: sub.defects, details: sub.details, overall: sub.answers?.overall || '',
+          checks: sub.checks ?? sub.row[colIndex('checks')], folder: sub.row[colIndex('folder')], at: sub.at, sheetPending: sub.sheetDone === false,
+          ...attention(v, boxes, sub.answers || { electrical: {}, signatures: {}, work: {}, overall: 'Completed' }),
+          photos: Object.entries(v.photos).map(([hash, ph]) => ({ hash, box: ph.box, name: ph.name, location: ph.locationSource || '' })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
         };
       }).sort((a, b) => b.at - a.at);
-      return send(res, 200, { boxes: BOXES.map((b) => b.key), canShowPhotos: typeof storage.read === 'function', hasExcel: cfg.sheet === 'excel', visits });
+      return send(res, 200, { canShowPhotos: typeof storage.read === 'function', hasExcel: cfg.sheet === 'excel', visits });
     }
     if (p === '/api/hr/photo') {
       const ph = state.visit(url.searchParams.get('visit'))?.photos[url.searchParams.get('hash')];

@@ -28,8 +28,9 @@
       <div class="who" id="who"></div>
     </header>
     <div id="waiting" class="waiting" hidden></div>
+    <div id="missing" class="missing" hidden role="alert"></div>
 
-    <section class="card">
+    <section class="card" data-id="client">
       <h2><span class="n">1</span>Client</h2>
       <select id="client" aria-label="Client"></select>
     </section>
@@ -41,11 +42,23 @@
 
     <section class="card">
       <h2><span class="n">3</span>Photos</h2>
-      <div id="tiles" class="tiles"></div>
+      <p class="hint" id="photoHint">Choose the client to see the photo boxes.</p>
+      <div id="photoGroups"></div>
     </section>
 
     <section class="card">
-      <h2><span class="n">4</span>Any defects?</h2>
+      <h2><span class="n">4</span>Checklist</h2>
+      <button id="allNormal" class="ghost" type="button">Set all to normal (ON / Yes)</button>
+      <div id="checklist"></div>
+    </section>
+
+    <section class="card" data-id="overall">
+      <h2><span class="n">5</span>Overall status</h2>
+      <div id="overall" class="chips3"></div>
+    </section>
+
+    <section class="card" data-id="defects">
+      <h2><span class="n">6</span>Any defects?</h2>
       <div class="yn">
         <button id="no" class="no" type="button">NO</button>
         <button id="yes" class="yes" type="button">YES</button>

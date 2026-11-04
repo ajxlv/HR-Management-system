@@ -2,9 +2,11 @@ import crypto from 'node:crypto';
 import { safeName } from '../util.js';
 import { GoogleError, fromApiResponse, explain } from './google-errors.js';
 import {
-  COL, HEADER_ROW, MAX_ROWS, NCOLS, OVERVIEW_TAB, OVERVIEW_HEADERS, OVERVIEW_TITLE,
-  clientTabRequests, overviewRequests, overviewRow, logoCell, clientTitle, clientSubline, overviewSubline, q,
+  CLIENT_TAB, OVERVIEW_TAB_LAYOUT, MAX_ROWS, NCOLS, OVERVIEW_TAB, OVERVIEW_HEADERS, OVERVIEW_TITLE,
+  clientTabRequests, overviewRequests, overviewRow, logoCell, clientTitle, clientUpdated, clientPhotos, overviewSubline, q,
 } from './layout.js';
+import { GROUP_SPANS, colIndex } from '../form.js';
+import { letter as letterOf } from './layout.js';
 import { istDateTime } from '../util.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
@@ -12,10 +14,10 @@ const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 // Google Sheets through a service account. No libraries needed.
 export class GoogleSheet {
   // opts: { sheetId, clientEmail, privateKey, projectId, logoUrl, rootFolder, clients }
-  constructor(opts, headers, boxCount, deps = {}) {
+  constructor(opts, headers, deps = {}) {
     const { sheetId, clientEmail, privateKey } = opts;
     if (!sheetId || !clientEmail || !privateKey) throw new Error('Google needs SHEET_ID and either GOOGLE_KEY_FILE or GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY');
-    Object.assign(this, { sheetId, clientEmail, headers, boxCount, key: privateKey, projectId: opts.projectId || '',
+    Object.assign(this, { sheetId, clientEmail, headers, key: privateKey, projectId: opts.projectId || '',
       logoUrl: opts.logoUrl || '', rootFolder: opts.rootFolder || 'Clients', clients: opts.clients || [] });
     this.fetch = deps.fetch || globalThis.fetch;
     this.now = deps.now || Date.now;
@@ -72,13 +74,17 @@ export class GoogleSheet {
   updated() { return istDateTime(this.now()); }
 
   async fillClientTab(title, client, existing) {
-    const id = this.tabs.get(title);
+    const id = this.tabs.get(title), T = CLIENT_TAB, t = q(title);
     await this.batch(clientTabRequests(id, existing));
     const folder = client?.folder || title;
+    const L = (i) => letterOf(i);
     await this.api('POST', '/values:batchUpdate', { valueInputOption: 'USER_ENTERED', data: [
-      { range: `${q(title)}!A1:B1`, values: [[logoCell(this.logoUrl), clientTitle(client?.name || title)]] },
-      { range: `${q(title)}!A2`, values: [[clientSubline(this.rootFolder, folder, this.updated())]] },
-      { range: `${q(title)}!A${HEADER_ROW}`, values: [this.headers] },
+      { range: `${t}!A1`, values: [[logoCell(this.logoUrl)]] },
+      { range: `${t}!${L(T.logoColumns)}1`, values: [[clientTitle(client?.name || title)]] },
+      { range: `${t}!A2`, values: [[clientUpdated(this.updated())]] },
+      { range: `${t}!${L(T.logoColumns)}2`, values: [[clientPhotos(this.rootFolder, folder)]] },
+      ...GROUP_SPANS.map((g) => ({ range: `${t}!${L(g.from)}${T.groupRow}`, values: [[g.name]] })),
+      { range: `${t}!A${T.headerRow}`, values: [this.headers] },
     ] });
   }
 
@@ -106,7 +112,7 @@ export class GoogleSheet {
     await this.api('POST', '/values:batchUpdate', { valueInputOption: 'USER_ENTERED', data: [
       { range: `${q(OVERVIEW_TAB)}!A1:B1`, values: [[logoCell(this.logoUrl), OVERVIEW_TITLE]] },
       { range: `${q(OVERVIEW_TAB)}!A2`, values: [[overviewSubline]] },
-      { range: `${q(OVERVIEW_TAB)}!A${HEADER_ROW}`, values: [OVERVIEW_HEADERS, ...rows] },
+      { range: `${q(OVERVIEW_TAB)}!A${OVERVIEW_TAB_LAYOUT.headerRow}`, values: [OVERVIEW_HEADERS, ...rows] },
     ] });
   }
 
@@ -116,17 +122,18 @@ export class GoogleSheet {
 
   rowValues(row, client) {
     const out = [...row];
-    for (const i of [COL.cleaner, COL.details, COL.checks]) out[i] = GoogleSheet.plain(out[i]);
-    if (client?.folderUrl) out[COL.folder] = `=HYPERLINK(${JSON.stringify(client.folderUrl)},${JSON.stringify(String(row[COL.folder]))})`;
+    for (const k of ['cleaner', 'details', 'checks']) out[colIndex(k)] = GoogleSheet.plain(out[colIndex(k)]);
+    if (client?.folderUrl) out[colIndex('folder')] = `=HYPERLINK(${JSON.stringify(client.folderUrl)},${JSON.stringify(String(row[colIndex('folder')]))})`;
     return out;
   }
 
   async appendRow(tab, row, ctx = {}) {
     const title = safeName(tab), client = ctx.client || this.find(tab);
     await this.ensureTab(title, client);
-    // Appending at A4 means "after the table that starts at the header row", so the banner is never overwritten.
-    await this.api('POST', `/values/${encodeURIComponent(`${q(title)}!A${HEADER_ROW}`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, { values: [this.rowValues(row, client)] });
-    await this.write(`${q(title)}!A2`, [[clientSubline(this.rootFolder, client?.folder || title, this.updated())]]);
+    // Appending at the header row means "after the table that starts there", so the banner is never overwritten.
+    const header = CLIENT_TAB.headerRow;
+    await this.api('POST', `/values/${encodeURIComponent(`${q(title)}!A${header}`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, { values: [this.rowValues(row, client)] });
+    await this.write(`${q(title)}!A2`, [[clientUpdated(this.updated())]]);
   }
 
   // ---- format:sheet : re-apply the layout to every existing tab ----

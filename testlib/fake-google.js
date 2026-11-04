@@ -9,7 +9,7 @@ export function createFakeGoogle(sheetId = 'SHEET123') {
   const byTitle = (t) => fake.sheets.find((s) => s.title === t);
   const key = (r, c) => `${r},${c}`;
   const addSheet = (props) => {
-    const s = { id: fake.nextId++, title: props.title, index: props.index ?? fake.sheets.length, cells: new Map(), cf: [], bands: [], frozen: 0, merges: [], filter: null, requests: [] };
+    const s = { id: fake.nextId++, title: props.title, index: props.index ?? fake.sheets.length, cells: new Map(), cf: [], bands: [], frozen: 0, frozenCols: 0, merges: [], filter: null, requests: [] };
     if (props.index === 0) fake.sheets.forEach((x) => x.index++);
     fake.sheets.push(s); fake.sheets.sort((a, b) => a.index - b.index);
     return s;
@@ -45,7 +45,7 @@ export function createFakeGoogle(sheetId = 'SHEET123') {
     if (k === 'mergeCells') s.merges.push(v.range);
     if (k === 'unmergeCells') s.merges = [];
     if (k === 'setBasicFilter') s.filter = v.filter.range;
-    if (k === 'updateSheetProperties') s.frozen = v.properties.gridProperties?.frozenRowCount ?? s.frozen;
+    if (k === 'updateSheetProperties') { s.frozen = v.properties.gridProperties?.frozenRowCount ?? s.frozen; s.frozenCols = v.properties.gridProperties?.frozenColumnCount ?? s.frozenCols; }
     return {};
   }
 
@@ -63,7 +63,13 @@ export function createFakeGoogle(sheetId = 'SHEET123') {
         properties: { sheetId: s.id, title: s.title, index: s.index }, conditionalFormats: s.cf, bandedRanges: s.bands.map((b) => ({ bandedRangeId: b.bandedRangeId })) })) });
     }
     if (rest === ':batchUpdate') {
-      try { return reply(200, { replies: body.requests.map(batchRequest) }); } catch (e) { return err(e.http || 500, e.message); }
+      try {
+        const replies = body.requests.map(batchRequest);
+        for (const s of fake.sheets) if (s.frozenCols && s.merges.some((m) => m.startColumnIndex < s.frozenCols && m.endColumnIndex > s.frozenCols)) {
+          throw Object.assign(new Error('You can\'t freeze columns which contain only part of a merged cell.'), { http: 400 });
+        }
+        return reply(200, { replies });
+      } catch (e) { return err(e.http || 500, e.message); }
     }
     if (rest === '/values:batchUpdate') { for (const d of body.data) put(d.range, d.values); return reply(200, {}); }
     if (rest.endsWith(':append')) {

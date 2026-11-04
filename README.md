@@ -1,6 +1,6 @@
 # WRS Cleaning Photos (HR management system)
 
-A phone web app. The cleaner picks the client and date, takes **Before / After / Bill / Wires** photos, answers "any defects?" and presses **Submit**. Photos go to the client's folder in OneDrive. One row per visit goes to a Google Sheet for HR.
+A phone web app. The cleaner picks the client and date, takes the photos (Before, After, one box per inverter, Challan, Bill), fills in a short checklist, gives an overall status and presses **Submit**. Photos go to the client's folder in OneDrive. One row per visit goes to a Google Sheet for HR.
 
 No dependencies. Node 18+.
 
@@ -34,18 +34,48 @@ Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR 
 3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234), `REPORT_KEY` (hr-demo), `SESSION_SECRET`.
 4. Deploy. Open the link on a phone: camera and GPS work because Vercel gives HTTPS.
 
+## The visit form
+
+Everything below is defined in `server/form.js` (labels, boxes, checklist items, sheet columns).
+
+**Photos.** Every box takes several photos, from the camera (big tap) or from the gallery (small button).
+- **Before**, **After**, **Inverter 1 to N**, **Challan** (the signed cleaning receipt), **Bill**. At least one photo in every box.
+- The number of inverter boxes is per client: set `"inverters": 4` on the client in `server/clients.json`. A client without it gets 1, and the app logs a warning at start.
+- Files in the date folder: `Before_1.jpg`, `After_2.jpg`, `Inverter1_1.jpg`, `Inverter2_1.jpg`, `Challan_1.jpg`, `Bill_1.jpg`. A second visit the same day carries on the numbers.
+
+**Location (Before and After).** Phones often have camera location tagging off, and gallery photos may have lost theirs, so the app uses, in this order:
+1. the location **inside the photo** (EXIF), with its capture time, if there is one;
+2. otherwise the **phone's live location** at the moment of upload.
+
+The source is stored per photo as `photo EXIF`, `phone at upload` or `none`, with whether it was a live camera shot or a gallery photo. A location is **verified** when it came from the photo, or from the phone during a live camera shot. A gallery photo with only the phone's location (or none) shows in the sheet's Checks column as "Location not verified" (amber). Distance from the site (300 m) and "taken on a different day" (EXIF date not the visit date) are still checked. There is no "photo must be fresh" rule any more.
+
+**Checklist (all compulsory).**
+- Electrical equipment, each **ON / OFF / N/A**: ACDB, Inverter, DCDB, Internet (the plant's monitoring/data logger being online), MCB, SPD, Earthing Trip. ON is the normal state.
+- Signatures on the paper challan, **Yes / No**: customer, cleaning supervisor.
+- Work done, **Yes / No**: session cleaning completed, solar panels washed with water, inverter room checked, earthing pit checked.
+- "Before photos taken" and "After photos taken" are filled in automatically from the photos.
+- **Overall status**: Completed / Partly completed / Not completed. Then the existing defects Yes/No and note.
+- A **Set all to normal** button fills ON and Yes in one tap (the cleaner still changes anything that is not normal).
+
+**Submit is blocked** until every box has a photo and every question is answered. A list at the top says exactly what is missing, and the page scrolls to the first missing item.
+
+Labels are English only. They are in `server/form.js` and the `T` block at the top of `public/app.js`, so another language can be added later.
+
 ## What HR gets
 
-- OneDrive: `Clients/<client folder>/YYYY-MM-DD/Before_1.jpg, After_1.jpg, Bill_1.jpg, Wires_1.jpg`. A second visit the same day carries on the numbers. Nothing is overwritten.
-- **Dashboard page** at `/hr.html` (needs `REPORT_KEY`): every visit with chips for missing photos, defects and checks, filters, photo thumbnails and the Excel download. Thumbnails work when photos are saved to a folder on the app PC (`STORAGE=local`); with direct Microsoft Graph upload the page shows the folder path instead.
-- Excel sheet (`WRS_Cleaning_Status.xlsx`): one tab per client. Columns: Visit date, Submitted at (IST), Cleaner, Before, After, Bill, Wires, Defects, Defect details, Checks, Folder path. Boxes show green "Uploaded (n)" or red "Not uploaded". Checks lists photos with no GPS, more than 300 m from the site, or taken on a different day.
+- OneDrive: `Clients/<client folder>/YYYY-MM-DD/` with the files above. Nothing is overwritten.
+- **Google Sheet** (see below): one row per visit with **28 columns**: Visit date, Submitted at (IST), Cleaner, Before, After, Inverters ("4 of 4 uploaded"), Challan, Bill, then the seven electrical items, the two signatures, the four work items, Before and After photos taken, Overall status, Defects, Defect details, Checks, Photo folder. A coloured band above the header groups them: **Photos | Electrical checklist | Signatures | Work done | Result**. ON, Yes and Uploaded are green. OFF, No and Not uploaded are red. N/A is grey. Inverters is red unless every inverter has a photo. Checks is amber unless it says OK.
+- The **Overview** tab adds "Visits with any OFF item" and "Visits not completed".
+- **Dashboard page** at `/hr.html` (needs `REPORT_KEY`): every visit with chips for missing photos, OFF items, missing signatures, not completed, defects and checks, filters, photo thumbnails and the Excel download.
+- Every answer is also kept as structured data in `data/state.json` (not only in the sheet).
+- The Excel file (`WRS_Cleaning_Status.xlsx`, used for the demo) has the same columns and colours.
 
 ## Everyday jobs
 
 | Job | Where |
 |---|---|
-| Add a client | Add a line to `server/clients.json` (`id`, `name`, exact OneDrive `folder`, optional `lat`/`lng`). **Create the folder in OneDrive first**. The app never creates client folders. |
-| Change the photo boxes | `BOXES` in `server/config.js` (and add an icon in `public/app.js` if you like). |
+| Add a client | Add a line to `server/clients.json` (`id`, `name`, exact OneDrive `folder`, `inverters`, optional `lat`/`lng`). **Create the folder in OneDrive first**. The app never creates client folders. |
+| Change the photo boxes or checklist | `server/form.js`. After changing the columns, run `npm run format:sheet` and start new client tabs (see the note under Google Sheet). |
 | Change the words on screen | `T` at the top of `public/app.js`. |
 | Change the cleaner's name / PIN | `CLEANER_NAME`, `CLEANER_PIN` in the environment. |
 | Date window, GPS distance | `MAX_DAYS_BACK`, `GPS_MAX_DISTANCE_M`. |
@@ -99,7 +129,7 @@ It prints `OK: wrote to '<sheet name>'`, or the exact fix. For example "Sheet no
 npm run demo:google
 ```
 
-Sends 3 sample visits (one complete, one with Wires missing, one with a defect) for 2 demo clients and prints the sheet link.
+Sends 3 sample visits for 2 demo clients (a complete one with all items ON, one with a missing Challan and Inverter 3 photo and no customer signature, one with OFF items, an unverified location and a defect) and prints the sheet link.
 
 **What the sheet looks like**
 - **Overview** tab first: one row per client with last visit, visits this month, visits with missing photos, open defects (red when above 0) and a link to the client's tab. All formulas, so hand edits are counted.
@@ -110,6 +140,10 @@ Colours, columns and widths are all in `server/sheets/layout.js`. After changing
 ```bash
 npm run format:sheet
 ```
+
+**If the sheet already has tabs from the earlier layout** (11 columns, with a Wires column), do not reuse them: the new layout has 28 columns, so old rows would sit under the wrong headers. Rename those tabs (for example add " (old)") or delete them. The app then creates fresh tabs on the next visit. `npm run format:sheet` only re-applies the look of tabs that already use the new columns.
+
+The first three columns (date, submitted at, cleaner) are frozen, together with rows 1 to 5. The banner is split around that line because Google Sheets does not allow freezing columns through a merged cell.
 
 **Photo folder as a link:** add `"folderUrl": "https://..."` to a client in `server/clients.json` (the folder's OneDrive web address). Without it the column shows plain text.
 
