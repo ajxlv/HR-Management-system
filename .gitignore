@@ -3,3 +3,9 @@ node_modules/
 data/
 *.log
 demo-output/
+
+# Google service-account keys: never commit
+*service-account*.json
+wrs-hr-*.json
+*-key.json
+demo-output-google/

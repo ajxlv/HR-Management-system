@@ -12,7 +12,10 @@
     "seed": "node scripts/seed.js",
     "demo": "node scripts/demo.js",
     "demo:serve": "node scripts/demo.js --serve",
-    "test": "node --test test/*.test.js"
+    "test": "node --test",
+    "check:google": "node scripts/check-google.js",
+    "format:sheet": "node scripts/format-sheet.js",
+    "demo:google": "node scripts/demo-google.js"
   },
   "dependencies": {
     "exceljs": "^4.4.0"

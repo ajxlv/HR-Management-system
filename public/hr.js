@@ -51,6 +51,7 @@ function card(v, B) {
     miss.length ? chip('Missing: ' + miss.join(', '), 'warn') : chip('All photos in', 'good'),
     v.defects === 'Yes' ? chip('Defects', 'bad') : '',
     flags(v) ? chip('Check', 'warn') : '',
+    v.sheetPending ? chip('Sheet row waiting', 'warn') : '',
   ].join('');
   el.innerHTML = `<button type="button" aria-expanded="false">
       <div class="who"><b></b><span></span></div><div class="when"></div><div class="chips">${chips}</div><span class="arrow">›</span></button>`;
