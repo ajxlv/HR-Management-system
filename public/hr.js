@@ -3,12 +3,13 @@ let key = ''; try { key = sessionStorage.getItem('hrkey') || ''; } catch {}
 let data = null, statFilter = '';
 
 const flags = (v) => v.checks && v.checks !== 'OK';
-const missing = (v, boxes) => boxes.filter((b) => !v.counts[b]);
 const kind = {
-  incomplete: (v, boxes) => missing(v, boxes).length > 0,
+  incomplete: (v) => v.missing.length > 0,
+  off: (v) => v.off.length > 0,
+  notCompleted: (v) => v.notCompleted,
   defects: (v) => v.defects === 'Yes',
   flags,
-  ok: (v, boxes) => !missing(v, boxes).length && v.defects === 'No' && !flags(v),
+  ok: (v) => !v.missing.length && !v.off.length && !v.noSignature.length && !v.notDone.length && !v.notCompleted && v.defects === 'No' && !flags(v),
 };
 
 async function load() {
@@ -30,25 +31,30 @@ function stat(label, n, cls, f) {
 }
 
 function render() {
-  const V = data.visits, B = data.boxes, f = $('fStatus').value, c = $('fClient').value;
+  const V = data.visits, f = $('fStatus').value, c = $('fClient').value;
   statFilter = f;
   $('stats').replaceChildren(
     stat('Visits', V.length, '', ''),
-    stat('Missing photos', V.filter((v) => kind.incomplete(v, B)).length, 'warn', 'incomplete'),
+    stat('Missing photos', V.filter(kind.incomplete).length, 'warn', 'incomplete'),
+    stat('Any item OFF', V.filter(kind.off).length, 'bad', 'off'),
+    stat('Not completed', V.filter(kind.notCompleted).length, 'bad', 'notCompleted'),
     stat('Defects reported', V.filter(kind.defects).length, 'bad', 'defects'),
     stat('Needs a check', V.filter(kind.flags).length, 'warn', 'flags'),
-    stat('All good', V.filter((v) => kind.ok(v, B)).length, 'good', 'ok'),
+    stat('All good', V.filter(kind.ok).length, 'good', 'ok'),
   );
-  const shown = V.filter((v) => (!c || v.client === c) && (!f || kind[f](v, B)));
+  const shown = V.filter((v) => (!c || v.client === c) && (!f || kind[f](v)));
   $('count').textContent = `${shown.length} of ${V.length} visits`;
-  $('list').replaceChildren(...(shown.length ? shown.map((v) => card(v, B)) : [Object.assign(document.createElement('div'), { className: 'empty', textContent: 'No visits match.' })]));
+  $('list').replaceChildren(...(shown.length ? shown.map((v) => card(v)) : [Object.assign(document.createElement('div'), { className: 'empty', textContent: 'No visits match.' })]));
 }
 
 const chip = (t, cls) => `<span class="chip ${cls}">${t}</span>`;
-function card(v, B) {
-  const miss = missing(v, B), el = document.createElement('div'); el.className = 'visit';
+function card(v) {
+  const el = document.createElement('div'); el.className = 'visit';
   const chips = [
-    miss.length ? chip('Missing: ' + miss.join(', '), 'warn') : chip('All photos in', 'good'),
+    v.missing.length ? chip('Missing: ' + v.missing.join(', '), 'warn') : chip('All photos in', 'good'),
+    v.off.length ? chip('OFF: ' + v.off.join(', '), 'bad') : '',
+    v.noSignature.length ? chip('No signature', 'bad') : '',
+    v.overall && v.notCompleted ? chip(v.overall, v.overall === 'Not completed' ? 'bad' : 'warn') : '',
     v.defects === 'Yes' ? chip('Defects', 'bad') : '',
     flags(v) ? chip('Check', 'warn') : '',
     v.sheetPending ? chip('Sheet row waiting', 'warn') : '',
@@ -71,6 +77,10 @@ function detail(v) {
   const h = (t) => Object.assign(document.createElement('h4'), { textContent: t });
   const p = (t, cls) => Object.assign(document.createElement('p'), { textContent: t, className: cls || '' });
   d.append(h('Defects'), p(v.defects === 'Yes' ? (v.details || 'Yes (no details written)') : 'None reported'));
+  if (v.overall) d.append(h('Overall status'), p(v.overall));
+  if (v.off.length) d.append(h('Equipment OFF'), p(v.off.join(', ')));
+  if (v.noSignature.length) d.append(h('Missing signatures'), p(v.noSignature.join(', ')));
+  if (v.notDone.length) d.append(h('Work not done'), p(v.notDone.join(', ')));
   if (v.checks && v.checks !== 'OK') d.append(h('Needs a check'), p(v.checks));
   d.append(h('Folder in OneDrive'), p(v.folder, 'path'));
   d.append(h(`Photos (${v.photos.length})`));
@@ -83,7 +93,7 @@ function detail(v) {
       img.onclick = () => { $('lightbox').querySelector('img').src = img.src; $('lightbox').hidden = false; };
       f.append(img);
     }
-    f.append(Object.assign(document.createElement('span'), { textContent: ph.name }));
+    f.append(Object.assign(document.createElement('span'), { textContent: ph.name + (ph.location && ph.location !== 'none' ? '' : '') }));
     wrap.append(f);
   }
   d.append(wrap);

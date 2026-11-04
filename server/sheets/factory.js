@@ -1,5 +1,6 @@
 import { loadEnvFile } from '../env.js';
-import { loadConfig, HEADERS, BOXES } from '../config.js';
+import { loadConfig } from '../config.js';
+import { HEADERS } from '../form.js';
 import { GoogleSheet } from './google.js';
 
 // Used by the command-line scripts: reads .env, builds the Google sheet client or explains what is missing.
@@ -10,7 +11,7 @@ export function googleFromEnv() {
   try { cfg = loadConfig(); }
   catch (e) { console.error(`Problem: ${e.message}`); process.exit(1); }
   try {
-    const sheet = new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google, logoUrl: cfg.logoUrl, rootFolder: cfg.rootFolder, clients: cfg.clients }, HEADERS, BOXES.length);
+    const sheet = new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google, logoUrl: cfg.logoUrl, rootFolder: cfg.rootFolder, clients: cfg.clients }, HEADERS);
     return { cfg, sheet };
   } catch (e) {
     console.error(`Problem: ${e.message}\nOpen .env and fill: SHEET_ID and GOOGLE_KEY_FILE (path to the downloaded JSON key).`);
