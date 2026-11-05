@@ -131,8 +131,10 @@ export class GoogleSheet {
     const title = safeName(tab), client = ctx.client || this.find(tab);
     await this.ensureTab(title, client);
     // Appending at the header row means "after the table that starts there", so the banner is never overwritten.
+    // OVERWRITE fills the next empty, already formatted row. INSERT_ROWS would insert a new row that copies the
+    // header's style and drops the date formats, so dates showed as numbers like 46331.
     const header = CLIENT_TAB.headerRow;
-    await this.api('POST', `/values/${encodeURIComponent(`${q(title)}!A${header}`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, { values: [this.rowValues(row, client)] });
+    await this.api('POST', `/values/${encodeURIComponent(`${q(title)}!A${header}`)}:append?valueInputOption=USER_ENTERED&insertDataOption=OVERWRITE`, { values: [this.rowValues(row, client)] });
     await this.write(`${q(title)}!A2`, [[clientUpdated(this.updated())]]);
   }
 

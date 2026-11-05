@@ -89,6 +89,8 @@ export function clientTabRequests(sheetId, existing) {
     ...T.heights.map((px, i) => heightReq(sheetId, i, px)),
     { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: T.headerRow, frozenColumnCount: T.frozenColumns } }, fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount' } },
     ...tableFrame(sheetId, T.headerRow, n),
+    // Plain data rows: clears any background and header-style text that rows picked up (format:sheet repairs old rows).
+    cell(sheetId, first, MAX_ROWS, 0, n, { textFormat: text('#1D2B2A', { bold: false }) }, 'backgroundColor,textFormat'),
     cell(sheetId, first, MAX_ROWS, 0, n, { verticalAlignment: 'MIDDLE', horizontalAlignment: 'CENTER' }, 'verticalAlignment,horizontalAlignment'),
     cell(sheetId, first, MAX_ROWS, colIndex('details'), colIndex('checks') + 1, { wrapStrategy: 'WRAP', horizontalAlignment: 'LEFT', verticalAlignment: 'TOP' }, 'wrapStrategy,horizontalAlignment,verticalAlignment'),
     cell(sheetId, first, MAX_ROWS, colIndex('cleaner'), colIndex('cleaner') + 1, { horizontalAlignment: 'LEFT' }, 'horizontalAlignment'),
