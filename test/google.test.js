@@ -36,6 +36,7 @@ test('new client tab: banner, group band, header at row 5, data from row 6, appe
   assert.deepEqual(HEADERS.map((_, i) => cell(`${letter(i)}5`)), HEADERS);
   assert.deepEqual(fake.appended.map((a) => a.row), [6, 7]);                       // never on rows 1 to 5
   assert.equal(fake.appended[0].option, 'USER_ENTERED');                           // real date, not text
+  assert.equal(fake.appended[0].insert, 'OVERWRITE');                              // fills pre-formatted rows; INSERT_ROWS copied the header style
   assert.equal(fake.appended[0].values.length, 28);
   const sh = fake.sheet(t);
   assert.equal(sh.frozen, 5); assert.equal(sh.frozenCols, 3);                      // header rows, and date + submitted at + cleaner
