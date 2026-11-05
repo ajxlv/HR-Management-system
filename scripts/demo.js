@@ -6,12 +6,12 @@ import { mkdirSync, rmSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../server/config.js';
 import { createApp } from '../server/app.js';
-import { seedDemo } from '../server/demo-seed.js';
+import { seedDemo, DEMO_CLIENTS_FILE } from '../server/demo-seed.js';
 
 const dir = path.resolve('demo-output');
 rmSync(dir, { recursive: true, force: true });
 const serve = process.argv.includes('--serve');
-const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'excel', CLEANER_NAME: 'Ramesh', CLEANER_PIN: '1234', REPORT_KEY: 'hr-demo', SESSION_SECRET: 'demo-secret', PORT: 3000 });
+const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'excel', CLEANER_NAME: 'Ramesh', CLEANER_PIN: '1234', REPORT_KEY: 'hr-demo', SESSION_SECRET: 'demo-secret', PORT: 3000 }, { clientsFile: DEMO_CLIENTS_FILE });
 for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', cfg.rootFolder, c.folder), { recursive: true });
 
 const server = createApp(cfg);

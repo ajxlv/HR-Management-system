@@ -15,6 +15,10 @@ const T = {
   chooseClientFirst: 'Choose the client to see the photo boxes.',
   needTitle: (n) => `Please finish ${n} thing${n === 1 ? '' : 's'} before sending:`,
   camera: 'Tap to take photo', gallery: 'From gallery',
+  inverterHint: 'One box for each inverter at this site. Press + if there are more.',
+  addInverter: 'Add another inverter',
+  removeInverter: (n) => `Remove Inverter ${n}`,
+  removeInverterPhotos: (n) => `Inverter ${n} has photos. Remove it and its photos?`,
   allNormal: 'Everything set to normal. Check each line, and change anything that is not normal.',
 };
 const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -36,9 +40,18 @@ let token = load('token') || '';
 // make sure the service worker also knows the token (older installs only had it in localStorage)
 if (token) window.WRSQueue.setMeta('token', token).catch(() => {});
 // Everything the cleaner has entered so far
-const form = { photos: {}, e: {}, s: {}, w: {}, overall: null, defects: null };
-const resetForm = () => Object.assign(form, { photos: {}, e: {}, s: {}, w: {}, overall: null, defects: null });
+const form = { photos: {}, inverters: 1, e: {}, s: {}, w: {}, overall: null, defects: null };
+const resetForm = () => Object.assign(form, { photos: {}, inverters: 1, e: {}, s: {}, w: {}, overall: null, defects: null });
 const currentClient = () => cfg?.clients.find((c) => c.id === $('client').value) || null;
+// The boxes of this visit: the fixed ones plus one Inverter box per inverter the cleaner has added (the client has no inverter data)
+function currentBoxes() {
+  const out = [];
+  for (const b of cfg.form.boxes) {
+    if (!b.inverter) out.push(b);
+    else if (b.key === 'Inverter1') for (let i = 1; i <= form.inverters; i++) out.push({ ...b, key: `Inverter${i}`, label: `INVERTER ${i}` });
+  }
+  return out;
+}
 
 // ---------- queue (shared with the service worker, see queue-core.js) ----------
 const Q = window.WRSQueue;
@@ -161,13 +174,32 @@ function renderPhotos() {
   $('photoHint').hidden = !!client;
   if (!client) { host.replaceChildren(); return; }
   const groups = [];
-  for (const b of client.boxes) { let g = groups.find((x) => x.name === b.group); if (!g) groups.push(g = { name: b.group, boxes: [] }); g.boxes.push(b); }
+  for (const b of currentBoxes()) { let g = groups.find((x) => x.name === b.group); if (!g) groups.push(g = { name: b.group, boxes: [] }); g.boxes.push(b); }
   host.replaceChildren(...groups.map((g) => {
     const wrap = el('div', 'pgroup'); wrap.append(el('h3', '', g.name));
     const tiles = el('div', 'tiles'); wrap.append(tiles);
     for (const box of g.boxes) tiles.append(tile(box));
+    if (g.name === 'Inverters') wrap.append(el('p', 'hint', T.inverterHint), inverterControls());
     return wrap;
   }));
+}
+
+function inverterControls() {
+  const row = el('div', 'invctl');
+  const add = el('button', 'invbtn', `+ ${T.addInverter}`); add.type = 'button'; add.disabled = form.inverters >= cfg.form.maxInverters;
+  add.onclick = () => { form.inverters += 1; renderPhotos(); refreshMissing(); };
+  row.append(add);
+  if (form.inverters > 1) {
+    const last = `Inverter${form.inverters}`, rm = el('button', 'invbtn rm', `− ${T.removeInverter(form.inverters)}`); rm.type = 'button';
+    rm.onclick = () => {
+      const photos = form.photos[last] || [];
+      if (photos.length && !confirm(T.removeInverterPhotos(form.inverters))) return;
+      photos.forEach((p) => URL.revokeObjectURL(p.url)); delete form.photos[last];
+      form.inverters -= 1; renderPhotos(); refreshMissing();
+    };
+    row.append(rm);
+  }
+  return row;
 }
 
 function tile(box) {
@@ -267,7 +299,7 @@ $('details').oninput = () => { if ($('details').value.trim()) setDefects('Yes');
 function missingItems() {
   const client = currentClient(), out = [];
   if (!client) return [{ id: 'client', text: 'Choose the client' }];
-  for (const b of client.boxes) if (b.required && !(form.photos[b.key] || []).length) out.push({ id: `box:${b.key}`, text: `Add a photo: ${b.label[0] + b.label.slice(1).toLowerCase()}` });
+  for (const b of currentBoxes()) if (b.required && !(form.photos[b.key] || []).length) out.push({ id: `box:${b.key}`, text: `Add a photo: ${b.label[0] + b.label.slice(1).toLowerCase()}` });
   for (const e of cfg.form.electrical) if (!form.e[e.key]) out.push({ id: `e:${e.key}`, text: `Choose ON, OFF or N/A: ${e.label}` });
   for (const s of cfg.form.signatures) if (!form.s[s.key]) out.push({ id: `s:${s.key}`, text: `Answer Yes or No: ${s.label}` });
   for (const w of cfg.form.work) if (!form.w[w.key]) out.push({ id: `w:${w.key}`, text: `Answer Yes or No: ${w.label}` });
@@ -298,7 +330,7 @@ $('client').onchange = () => {
   const had = Object.values(form.photos).some((l) => l.length);
   if (had && !confirm(T.clearPhotos)) { $('client').value = prevClient; return; }
   Object.values(form.photos).flat().forEach((p) => URL.revokeObjectURL(p.url));
-  form.photos = {}; prevClient = $('client').value; say('', '');
+  form.photos = {}; form.inverters = 1; prevClient = $('client').value; say('', '');
   renderPhotos(); refreshMissing();
 };
 
@@ -312,14 +344,14 @@ $('submit').onclick = async () => {
   if (!date) { say('Please choose the date.', 'err'); return; }
   $('submit').disabled = true;
   const visit = crypto.randomUUID(), items = [];
-  for (const box of client.boxes) for (const p of form.photos[box.key] || []) {
+  for (const box of currentBoxes()) for (const p of form.photos[box.key] || []) {
     items.push({
       type: 'photo', blob: p.blob,
       params: { visit, client: client.id, date, box: box.key, cap: p.cap, src: p.src, tsrc: p.tsrc || '',
         ...(p.taken ? { taken: p.taken } : {}), ...(p.pos ? { lat: p.pos.lat, lng: p.pos.lng, ...(p.pos.acc != null ? { acc: Math.round(p.pos.acc) } : {}) } : {}) },
     });
   }
-  items.push({ type: 'visit', body: { visit, client: client.id, date, defects: form.defects, details: $('details').value.trim(),
+  items.push({ type: 'visit', body: { visit, client: client.id, date, inverters: form.inverters, defects: form.defects, details: $('details').value.trim(),
     answers: { electrical: { ...form.e }, signatures: { ...form.s }, work: { ...form.w }, overall: form.overall } } });
   try {
     await Q.add(items);                         // saved on the phone first, so nothing is lost

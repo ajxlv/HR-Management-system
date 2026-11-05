@@ -8,7 +8,7 @@ No dependencies. Node 18+.
 
 ```bash
 cp .env.example .env     # leave STORAGE=local and SHEET=csv
-npm run seed             # makes the demo client folders
+npm run seed -- --create-missing --create-root   # makes a local test folder tree (data/onedrive/Clients/<client>)
 npm run demo             # fills demo/WRS_Cleaning_Status_demo.xlsx with sample visits
 npm start                # http://localhost:3000
 npm test                 # full flow test
@@ -34,13 +34,54 @@ Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR 
 3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234), `REPORT_KEY` (hr-demo), `SESSION_SECRET`.
 4. Deploy. Open the link on a phone: camera and GPS work because Vercel gives HTTPS.
 
+## The client list
+
+The dropdown on the cleaner's phone, the OneDrive folders and the Google Sheet tabs all come from `server/clients.json`. Each client is just `id`, `name`, `folder` (the exact OneDrive folder name, the same as the name) and, only if known, `lat` and `lng`. There is no inverter count and no phone number in it.
+
+**To load or update the list from HR's Excel or CSV file:**
+
+```bash
+npm run import:clients -- "AMC_start_end_date_data.xlsx" --dry-run
+```
+
+```bash
+npm run import:clients -- "AMC_start_end_date_data.xlsx"
+```
+
+The first command only reports. It prints which sheet, heading row and column it used for the names, what it fixed by itself, and any problems. The second one writes `server/clients.json`. It **refuses to write if any check fails** and prints a table of row, client, problem and suggested fix.
+
+What it does:
+- Finds the names column itself (a heading like "Client", "Site name", or HR's "AMC site list above 1 Lakh"). Use `--column C` (a letter or the heading text) if it guesses wrong, and `--sheet Name` for another sheet.
+- Rows with no name (for example the next contract year of the same site) are skipped.
+- Removes extra spaces and a **trailing dot** (Windows and OneDrive drop a trailing dot from a folder name, so `Acron Plast Pvt. Ltd.` becomes `Acron Plast Pvt. Ltd`).
+- Folder = name, unless the sheet has a **Folder** column. Coordinates are read from an optional **Location** column (`19.99, 73.78` or a Google Maps link) and checked to be in India.
+- **Refuses:** characters Windows and OneDrive do not allow in a folder name (`" * : < > ? / \ |`), reserved names like CON, a name longer than 100 characters, and two names that are the same when case and spacing are ignored (they would share a folder and a sheet tab). Similar names such as "Samsonite" and "Samsonite ASHOKA,DHONGADE" are fine.
+- **Ids never move.** A client already in the list keeps its id when HR re-sorts the sheet or adds rows. New clients get the next free number. A client missing from the sheet is refused (stored visits use its id) unless you add `--allow-remove`. `--replace-all` starts the numbering again from `c01` and is meant for the first import only.
+- Nothing else from the sheet (phone numbers, vendor, amounts) is copied.
+
+**Do the OneDrive folders exist?** The real folders already exist in OneDrive, and the app never creates client folders on its own. To check, run:
+
+```bash
+npm run seed
+```
+
+It looks in `LOCAL_ROOT/ROOT_FOLDER` and only **reports** which client folders are missing. It also flags a folder that exists with a slightly different spelling (case, spacing) and never creates a look-alike. To create the ones that really are missing:
+
+```bash
+npm run seed -- --create-missing
+```
+
+The root folder itself is never created unless you also pass `--create-root` (only for a local test folder), so a wrong `LOCAL_ROOT` cannot make a fake tree.
+
+The tests and the demos use six made-up clients in `testlib/clients.fixture.json`, never the real list.
+
 ## The visit form
 
 Everything below is defined in `server/form.js` (labels, boxes, checklist items, sheet columns).
 
 **Photos.** Every box takes several photos, from the camera (big tap) or from the gallery (small button).
 - **Before**, **After**, **Inverter 1 to N**, **Challan** (the signed cleaning receipt), **Bill**. At least one photo in every box.
-- The number of inverter boxes is per client: set `"inverters": 4` on the client in `server/clients.json`. A client without it gets 1, and the app logs a warning at start.
+- **The cleaner decides how many inverters there are.** The form starts with one Inverter box. The cleaner presses **+ Add another inverter** for each extra one (up to 12) and **Remove** for the last one if he added too many. Every box he adds needs a photo. Clients carry no inverter data. The count travels with the visit, and the sheet shows "3 of 3 uploaded" (or "2 of 3 uploaded", in red, if a photo is missing).
 - Files in the date folder: `Before_1.jpg`, `After_2.jpg`, `Inverter1_1.jpg`, `Inverter2_1.jpg`, `Challan_1.jpg`, `Bill_1.jpg`. A second visit the same day carries on the numbers.
 
 **Location (Before and After).** Phones often have camera location tagging off, and gallery photos may have lost theirs, so the app uses, in this order:
@@ -74,7 +115,7 @@ Labels are English only. They are in `server/form.js` and the `T` block at the t
 
 | Job | Where |
 |---|---|
-| Add a client | Add a line to `server/clients.json` (`id`, `name`, exact OneDrive `folder`, `inverters`, optional `lat`/`lng`). **Create the folder in OneDrive first**. The app never creates client folders. |
+| Add or change clients | Edit HR's list and run `npm run import:clients -- list.xlsx` (see **The client list** below). The OneDrive folder must exist: the app never creates client folders. |
 | Change the photo boxes or checklist | `server/form.js`. After changing the columns, run `npm run format:sheet` and start new client tabs (see the note under Google Sheet). |
 | Change the words on screen | `T` at the top of `public/app.js`. |
 | Change the cleaner's name / PIN | `CLEANER_NAME`, `CLEANER_PIN` in the environment. |
@@ -129,7 +170,7 @@ It prints `OK: wrote to '<sheet name>'`, or the exact fix. For example "Sheet no
 npm run demo:google
 ```
 
-Sends 3 sample visits for 2 demo clients (a complete one with all items ON, one with a missing Challan and Inverter 3 photo and no customer signature, one with OFF items, an unverified location and a defect) and prints the sheet link.
+Sends 3 sample visits for 2 demo clients (a complete one with all items ON, one with a missing Challan and Inverter 3 photo and no customer signature, one with OFF items, an unverified location and a defect) and prints the sheet link. These are made-up clients, so it adds two demo tabs to your real sheet: delete them afterwards.
 
 **What the sheet looks like**
 - **Overview** tab first: one row per client with last visit, visits this month, visits with missing photos, open defects (red when above 0) and a link to the client's tab. All formulas, so hand edits are counted.

@@ -8,7 +8,7 @@ Screenshots of every step are in `docs/screens/`.
 2. **Cleaner's phone (2 min).**
    - Open the app. Enter PIN. Big text, one screen.
    - Pick client. Date is today. Take Before (twice), After, Bill. Tap YES for defects and type a note.
-   - Choose a client with 4 or 6 inverters: the form shows one box per inverter. Press SUBMIT with things missing: a red list at the top says exactly what, and the page scrolls to the first one.
+   - Choose a client. The form starts with one Inverter box: press "+ Add another inverter" for each extra one. Press SUBMIT with things missing: a red list at the top says exactly what, and the page scrolls to the first one.
    - Add photos from the camera and from the gallery. Tap a photo to see its location badge. Press "Set all to normal", then change one item to OFF.
    - Point out the stamp on each photo: client, box, time, GPS.
 3. **HR dashboard (2 min).**

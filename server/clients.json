@@ -1,8 +1,267 @@
 [
-  { "id": "c01", "name": "Sharma Residence",       "folder": "Sharma Residence",       "inverters": 2, "lat": 19.9975, "lng": 73.7898 },
-  { "id": "c02", "name": "Patil Agro Industries",  "folder": "Patil Agro Industries",  "inverters": 4, "lat": 20.0110, "lng": 73.7620 },
-  { "id": "c03", "name": "Deshmukh Hospital",      "folder": "Deshmukh Hospital",      "inverters": 6, "lat": 19.9615, "lng": 73.7670 },
-  { "id": "c04", "name": "Gokhale Apartments",     "folder": "Gokhale Apartments",     "inverters": 2, "lat": 20.0059, "lng": 73.7910 },
-  { "id": "c05", "name": "Nashik Textile Mills",   "folder": "Nashik Textile Mills",   "inverters": 4, "lat": 19.9420, "lng": 73.8300 },
-  { "id": "c06", "name": "Jadhav Farm House",      "folder": "Jadhav Farm House",      "inverters": 1 }
+  {
+    "id": "c24",
+    "name": "Acron Plast Pvt. Ltd",
+    "folder": "Acron Plast Pvt. Ltd"
+  },
+  {
+    "id": "c38",
+    "name": "Acron Plast Pvt. Ltd.C.5",
+    "folder": "Acron Plast Pvt. Ltd.C.5"
+  },
+  {
+    "id": "c29",
+    "name": "Ajay Dua",
+    "folder": "Ajay Dua"
+  },
+  {
+    "id": "c25",
+    "name": "Amber Auto",
+    "folder": "Amber Auto"
+  },
+  {
+    "id": "c44",
+    "name": "Aumsai Coatings",
+    "folder": "Aumsai Coatings"
+  },
+  {
+    "id": "c32",
+    "name": "B.T.Kadlag",
+    "folder": "B.T.Kadlag"
+  },
+  {
+    "id": "c14",
+    "name": "BajajSons Limited",
+    "folder": "BajajSons Limited"
+  },
+  {
+    "id": "c22",
+    "name": "Bhausaheb Sangle",
+    "folder": "Bhausaheb Sangle"
+  },
+  {
+    "id": "c23",
+    "name": "Bhausaheb Sangle, Sinnar",
+    "folder": "Bhausaheb Sangle, Sinnar"
+  },
+  {
+    "id": "c16",
+    "name": "Bhinge Brother",
+    "folder": "Bhinge Brother"
+  },
+  {
+    "id": "c21",
+    "name": "Cresent Electronics",
+    "folder": "Cresent Electronics"
+  },
+  {
+    "id": "c36",
+    "name": "Dhadiwal Hospital",
+    "folder": "Dhadiwal Hospital"
+  },
+  {
+    "id": "c20",
+    "name": "Diffusion Packaging",
+    "folder": "Diffusion Packaging"
+  },
+  {
+    "id": "c19",
+    "name": "Divya Adlab",
+    "folder": "Divya Adlab"
+  },
+  {
+    "id": "c15",
+    "name": "Ecoflo Industries",
+    "folder": "Ecoflo Industries"
+  },
+  {
+    "id": "c30",
+    "name": "Gaurav Dharkar",
+    "folder": "Gaurav Dharkar"
+  },
+  {
+    "id": "c34",
+    "name": "GEBI GLASS LLP(Bluestar)",
+    "folder": "GEBI GLASS LLP(Bluestar)"
+  },
+  {
+    "id": "c26",
+    "name": "Gharkul Parivar Apartment",
+    "folder": "Gharkul Parivar Apartment"
+  },
+  {
+    "id": "c27",
+    "name": "Gharkul Parivar sanstha",
+    "folder": "Gharkul Parivar sanstha"
+  },
+  {
+    "id": "c01",
+    "name": "Go Green",
+    "folder": "Go Green"
+  },
+  {
+    "id": "c35",
+    "name": "Grover Hospitality",
+    "folder": "Grover Hospitality"
+  },
+  {
+    "id": "c07",
+    "name": "Janhit Hospital",
+    "folder": "Janhit Hospital"
+  },
+  {
+    "id": "c42",
+    "name": "Jinendra Estate",
+    "folder": "Jinendra Estate"
+  },
+  {
+    "id": "c11",
+    "name": "Johri Villa (Manjula Johri)",
+    "folder": "Johri Villa (Manjula Johri)"
+  },
+  {
+    "id": "c03",
+    "name": "Koso H33.34",
+    "folder": "Koso H33.34"
+  },
+  {
+    "id": "c04",
+    "name": "Koso J1",
+    "folder": "Koso J1"
+  },
+  {
+    "id": "c28",
+    "name": "Mahendra Choriya",
+    "folder": "Mahendra Choriya"
+  },
+  {
+    "id": "c39",
+    "name": "Manav Chandak",
+    "folder": "Manav Chandak"
+  },
+  {
+    "id": "c43",
+    "name": "Masalaz one",
+    "folder": "Masalaz one"
+  },
+  {
+    "id": "c52",
+    "name": "Mayur Kumat",
+    "folder": "Mayur Kumat"
+  },
+  {
+    "id": "c09",
+    "name": "Ms Industrial components M24",
+    "folder": "Ms Industrial components M24"
+  },
+  {
+    "id": "c10",
+    "name": "Ms Industrial components W111",
+    "folder": "Ms Industrial components W111"
+  },
+  {
+    "id": "c41",
+    "name": "Mudat Kokni",
+    "folder": "Mudat Kokni"
+  },
+  {
+    "id": "c18",
+    "name": "Namco Bank",
+    "folder": "Namco Bank"
+  },
+  {
+    "id": "c53",
+    "name": "Nilesh Shah",
+    "folder": "Nilesh Shah"
+  },
+  {
+    "id": "c51",
+    "name": "Pansare Home",
+    "folder": "Pansare Home"
+  },
+  {
+    "id": "c06",
+    "name": "Paragon Electricals",
+    "folder": "Paragon Electricals"
+  },
+  {
+    "id": "c17",
+    "name": "Platinum Hospital",
+    "folder": "Platinum Hospital"
+  },
+  {
+    "id": "c49",
+    "name": "Prem Industries",
+    "folder": "Prem Industries"
+  },
+  {
+    "id": "c08",
+    "name": "Raj sales corporation",
+    "folder": "Raj sales corporation"
+  },
+  {
+    "id": "c37",
+    "name": "Renuka Industries",
+    "folder": "Renuka Industries"
+  },
+  {
+    "id": "c33",
+    "name": "Rushiraj Harmony",
+    "folder": "Rushiraj Harmony"
+  },
+  {
+    "id": "c12",
+    "name": "Sambe D-69",
+    "folder": "Sambe D-69"
+  },
+  {
+    "id": "c13",
+    "name": "Sambe W-103",
+    "folder": "Sambe W-103"
+  },
+  {
+    "id": "c02",
+    "name": "Samsonite",
+    "folder": "Samsonite"
+  },
+  {
+    "id": "c31",
+    "name": "Samsonite ASHOKA,DHONGADE",
+    "folder": "Samsonite ASHOKA,DHONGADE"
+  },
+  {
+    "id": "c05",
+    "name": "Seva Automotive Pvt.Ltd",
+    "folder": "Seva Automotive Pvt.Ltd"
+  },
+  {
+    "id": "c47",
+    "name": "Shreyas Fabtech H-37",
+    "folder": "Shreyas Fabtech H-37"
+  },
+  {
+    "id": "c48",
+    "name": "Shreyas Fabtech H-147",
+    "folder": "Shreyas Fabtech H-147"
+  },
+  {
+    "id": "c46",
+    "name": "Shreyas Fabtech Limited",
+    "folder": "Shreyas Fabtech Limited"
+  },
+  {
+    "id": "c45",
+    "name": "Shreyas Fabtech LLP",
+    "folder": "Shreyas Fabtech LLP"
+  },
+  {
+    "id": "c50",
+    "name": "Shreyas Patel Bunglow",
+    "folder": "Shreyas Patel Bunglow"
+  },
+  {
+    "id": "c40",
+    "name": "Vivek Chandak",
+    "folder": "Vivek Chandak"
+  }
 ]

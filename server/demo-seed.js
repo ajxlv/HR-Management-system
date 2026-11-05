@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { istDate } from './util.js';
 import { boxesFor, ELECTRICAL, SIGNATURES, WORK } from './form.js';
 
+// The demos use made-up clients, never the real list.
+export const DEMO_CLIENTS_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'testlib', 'clients.fixture.json');
+
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'demo', 'samples');
 const DAY = 86400000;
 
@@ -27,10 +30,10 @@ export function createVisitSender(direct, cfg) {
   // random trailing bytes so two samples in one visit are never byte-identical (the app drops exact duplicates)
   const jpeg = (box, i) => Buffer.concat([readFileSync(path.join(SAMPLES, sampleFor(box, i))), Buffer.from(Math.random().toString(36))]);
 
-  // opts: back (days ago), photos { BoxKey: count | 0 }, location, far, otherDay, off [], na [], sign {customer:'No'}, work {washed:'No'},
+  // opts: back (days ago), inverters (how many inverter boxes the cleaner added), photos { BoxKey: count | 0 }, location, far, otherDay, off [], na [], sign {customer:'No'}, work {washed:'No'},
   //       overall, defects, details
-  return async function visit({ client, back = 0, photos = {}, location = 'camera', far = false, otherDay = false, off = [], na = [], sign = {}, work = {}, overall = 'Completed', defects = 'No', details = '' }) {
-    const site = cfg.clients.find((c) => c.id === client), boxes = boxesFor(site), d = date(back);
+  return async function visit({ client, back = 0, inverters = 1, photos = {}, location = 'camera', far = false, otherDay = false, off = [], na = [], sign = {}, work = {}, overall = 'Completed', defects = 'No', details = '' }) {
+    const site = cfg.clients.find((c) => c.id === client), boxes = boxesFor(inverters), d = date(back);
     const id = `demo-${client}-${back}-${Math.random().toString(36).slice(2, 10)}`;
     for (const box of boxes) {
       const count = photos[box.key] ?? (box.key === 'Before' || box.key === 'After' ? 2 : 1);
@@ -49,16 +52,16 @@ export function createVisitSender(direct, cfg) {
     for (const e of ELECTRICAL) answers.electrical[e.key] = off.includes(e.key) ? 'OFF' : na.includes(e.key) ? 'N/A' : 'ON';
     for (const s of SIGNATURES) answers.signatures[s.key] = sign[s.key] || 'Yes';
     for (const w of WORK) answers.work[w.key] = work[w.key] || 'Yes';
-    await direct.visit({ visit: id, client, date: d, answers, defects, details });
+    await direct.visit({ visit: id, client, date: d, inverters, answers, defects, details });
   };
 }
 
 export async function seedDemo(direct, cfg) {
   const visit = createVisitSender(direct, cfg);
-  await visit({ client: 'c01', back: 4 });                                                              // 2 inverters, all normal
-  await visit({ client: 'c02', back: 3, location: 'exif', off: ['MCB', 'Internet'], na: ['SPD'], overall: 'Partly completed', work: { inverterRoom: 'No' }, defects: 'Yes', details: 'MCB tripped on string 3. Internet logger offline, no data on the app.' });   // 4 inverters, two items OFF
-  await visit({ client: 'c03', back: 2, location: 'gallery', photos: { Inverter5: 0 }, sign: { customer: 'No' }, overall: 'Not completed', work: { sessionCleaning: 'No' } });   // 6 inverters: one photo missing, no customer signature, location not verified
-  await visit({ client: 'c04', back: 1, far: true, otherDay: true, defects: 'Yes', details: 'Loose clamp on row 3' });                  // far from the site, photos taken on another day
+  await visit({ client: 'c01', back: 4, inverters: 2 });                                                // 2 inverters, all normal
+  await visit({ client: 'c02', back: 3, inverters: 4, location: 'exif', off: ['MCB', 'Internet'], na: ['SPD'], overall: 'Partly completed', work: { inverterRoom: 'No' }, defects: 'Yes', details: 'MCB tripped on string 3. Internet logger offline, no data on the app.' });   // 4 inverters, two items OFF
+  await visit({ client: 'c03', back: 2, inverters: 6, location: 'gallery', photos: { Inverter5: 0 }, sign: { customer: 'No' }, overall: 'Not completed', work: { sessionCleaning: 'No' } });   // 6 inverters: one photo missing, no customer signature, location not verified
+  await visit({ client: 'c04', back: 1, inverters: 2, far: true, otherDay: true, defects: 'Yes', details: 'Loose clamp on row 3' });                  // far from the site, photos taken on another day
   await visit({ client: 'c01', back: 0, location: 'none' });                                            // camera shots without a location
-  await visit({ client: 'c05', back: 0, photos: { Challan: 0 }, off: ['DCDB'], overall: 'Partly completed' });
+  await visit({ client: 'c05', back: 0, inverters: 4, photos: { Challan: 0 }, off: ['DCDB'], overall: 'Partly completed' });
 }

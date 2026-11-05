@@ -15,7 +15,8 @@
     "test": "node --test",
     "check:google": "node scripts/check-google.js",
     "format:sheet": "node scripts/format-sheet.js",
-    "demo:google": "node scripts/demo-google.js"
+    "demo:google": "node scripts/demo-google.js",
+    "import:clients": "node scripts/import-clients.js"
   },
   "dependencies": {
     "exceljs": "^4.4.0"

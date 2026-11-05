@@ -4,43 +4,40 @@ import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  boxesFor, inverterCount, validateAnswers, buildRow, buildChecks, attention, locationVerdict, locationSourceFrom, LOC,
+  boxesFor, clampInverters, declaredInverters, isBoxKey, validateAnswers, buildRow, buildChecks, attention, locationVerdict, locationSourceFrom, LOC,
   HEADERS, COLUMNS, colIndex, GROUP_SPANS, ELECTRICAL, SIGNATURES, WORK, OVERALL,
 } from '../server/form.js';
 import { classify } from '../server/sheets/status.js';
-import { loadConfig } from '../server/config.js';
+import { testConfig } from '../testlib/config.js';
 import { okAnswers, fakeVisit, rowOf, allPhotos } from '../testlib/helpers.js';
 
-const site = { id: 'c1', name: 'Test Site', folder: 'Test Site', lat: 20, lng: 73, inverters: 4 };
+const site = { id: 'c1', name: 'Test Site', folder: 'Test Site', lat: 20, lng: 73 };   // the client has no inverter data: the cleaner sets the count on each visit
 
-test('the form has exactly as many inverter boxes as the client has inverters', () => {
+test('the form has exactly as many inverter boxes as the cleaner added', () => {
   for (const n of [1, 2, 4, 6, 12]) {
-    const boxes = boxesFor({ inverters: n });
+    const boxes = boxesFor(n);
     assert.deepEqual(boxes.filter((b) => b.inverter).map((b) => b.key), Array.from({ length: n }, (_, i) => `Inverter${i + 1}`));
     assert.deepEqual(boxes.map((b) => b.key).filter((k) => !k.startsWith('Inverter')), ['Before', 'After', 'Challan', 'Bill']);
   }
-  assert.equal(boxesFor({ inverters: 6 }).length, 10);
-  for (const bad of [undefined, 0, -1, 13, 2.5, '4', null]) assert.equal(inverterCount({ inverters: bad }), 1, `default for ${bad}`);
-  const boxes = boxesFor(site);
+  assert.equal(boxesFor(6).length, 10);
+  for (const bad of [undefined, 0, -1, 13, 2.5, '4', null]) assert.equal(boxesFor(bad).filter((b) => b.inverter).length, 1, `one inverter box for ${bad}`);
+  const boxes = boxesFor(4);
   assert.ok(boxes.every((b) => b.required), 'every box needs a photo');
   assert.deepEqual(boxes.filter((b) => b.gps).map((b) => b.key), ['Before', 'After'], 'only Before and After need a location');
   assert.ok(!boxes.some((b) => b.key === 'Wires'), 'Wires is gone');
 });
 
-test('a client without a valid inverter count gets 1 and a warning', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'wrs-c-')), file = path.join(dir, 'clients.json');
-  writeFileSync(file, JSON.stringify([{ id: 'a', name: 'A', folder: 'A' }, { id: 'b', name: 'B', folder: 'B', inverters: 3 }, { id: 'c', name: 'C', folder: 'C', inverters: 99 }]));
-  const cfg = loadConfig({}, { clientsFile: file });
-  assert.deepEqual(cfg.clients.map((c) => c.inverters), [1, 3, 1]);
-  assert.equal(cfg.warnings.length, 2);
-  assert.match(cfg.warnings[0], /"A".*inverters/);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('the real client list has demo clients with 2, 4 and 6 inverters and no warnings', () => {
-  const cfg = loadConfig({});
-  assert.deepEqual(cfg.warnings, []);
-  assert.ok([2, 4, 6].every((n) => cfg.clients.some((c) => c.inverters === n)));
+test('inverter count: valid range, box keys, and the count a visit really has', () => {
+  assert.equal(clampInverters(1), 1); assert.equal(clampInverters(12), 12);
+  for (const bad of [0, 13, -3, 1.5, '2', null, undefined, NaN]) assert.equal(clampInverters(bad), null);
+  for (const ok of ['Before', 'After', 'Challan', 'Bill', 'Inverter1', 'Inverter9', 'Inverter10', 'Inverter12']) assert.ok(isBoxKey(ok), ok);
+  for (const bad of ['Wires', 'Inverter0', 'Inverter13', 'Inverter01', 'inverter1', 'Inverter', 'Inverter1x', '']) assert.ok(!isBoxKey(bad), bad);
+  const visit = (...boxes) => ({ photos: Object.fromEntries(boxes.map((b, i) => [`h${i}`, { box: b }])) });
+  assert.equal(declaredInverters(visit('Before'), undefined), 1);              // nothing declared: at least one
+  assert.equal(declaredInverters(visit('Before'), 3), 3);                      // what the cleaner declared
+  assert.equal(declaredInverters(visit('Inverter1', 'Inverter4'), 2), 4);      // never fewer than the highest one he uploaded to
+  assert.equal(declaredInverters(visit('Inverter3'), undefined), 3);
+  assert.equal(declaredInverters(visit('Before'), 99), 1);                     // an invalid number is ignored
 });
 
 test('answers: every item must be answered with an allowed value', () => {
@@ -71,12 +68,12 @@ test('sheet row: 28 columns in the agreed order', () => {
   assert.deepEqual(GROUP_SPANS.map((g) => [g.name, HEADERS[g.from], HEADERS[g.to]]), [
     ['Photos', 'Before', 'Bill'], ['Electrical checklist', 'ACDB', 'Earthing Trip'], ['Signatures', 'Customer signature', 'Supervisor signature'],
     ['Work done', 'Session cleaning', 'After photos taken'], ['Result', 'Overall status', 'Photo folder']]);
-  assert.equal(rowOf(site).length, 28);
+  assert.equal(rowOf(site, { inverters: 4 }).length, 28);
 });
 
 test('sheet row: ON / OFF / N/A, signatures, work and the automatic answers', () => {
   const row = rowOf(site, {
-    photos: { Before: 2, After: 1, Inverter1: 1, Inverter2: 2, Inverter3: 1, Challan: 1 },        // Inverter4 and Bill missing
+    inverters: 4, photos: { Before: 2, After: 1, Inverter1: 1, Inverter2: 2, Inverter3: 1, Challan: 1 },        // Inverter4 and Bill missing
     answers: okAnswers({ electrical: { MCB: 'OFF', SPD: 'N/A', Internet: 'OFF' }, signatures: { customer: 'No' }, work: { washed: 'No' }, overall: 'Partly completed' }),
     defects: 'Yes', details: 'Cracked panel',
   });
@@ -91,10 +88,10 @@ test('sheet row: ON / OFF / N/A, signatures, work and the automatic answers', ()
   assert.equal(at('Overall status'), 'Partly completed'); assert.equal(at('Defects'), 'Yes'); assert.equal(at('Defect details'), 'Cracked panel');
   assert.equal(at('Photo folder'), 'Clients/Test Site/2026-11-02');
   assert.match(at('Checks'), /No photo: .*Inverter 4.*Bill/);
-  const none = rowOf(site, { photos: { Inverter1: 1 } });
+  const none = rowOf(site, { inverters: 4, photos: { Inverter1: 1 } });
   assert.equal(none[HEADERS.indexOf('Before photos taken')], 'No'); assert.equal(none[HEADERS.indexOf('After photos taken')], 'No');
   assert.equal(none[HEADERS.indexOf('Inverters')], '1 of 4 uploaded');
-  assert.equal(rowOf(site)[HEADERS.indexOf('Inverters')], '4 of 4 uploaded');
+  assert.equal(rowOf(site, { inverters: 4 })[HEADERS.indexOf('Inverters')], '4 of 4 uploaded');
 });
 
 test('colours: ON green, OFF red, N/A grey, No red, Inverters red unless all uploaded, Checks amber', () => {
@@ -123,7 +120,7 @@ test('location source: what counts as verified', () => {
 });
 
 test('Checks column: location, distance and date notes', () => {
-  const boxes = boxesFor(site), checks = (photos, date) => buildChecks(fakeVisit(site, photos, date), site, boxes);
+  const boxes = boxesFor(4), checks = (photos, date) => buildChecks(fakeVisit(site, photos, date), site, boxes);
   const ok = { Inverter1: 1, Inverter2: 1, Inverter3: 1, Inverter4: 1, Challan: 1, Bill: 1 };
   assert.equal(checks({ ...ok, Before: 2, After: 1 }), 'OK');
   assert.equal(checks({ ...ok, Before: { count: 1, capture: 'gallery', locationSource: LOC.EXIF }, After: 1 }), 'OK');                                       // EXIF: verified
@@ -138,11 +135,11 @@ test('Checks column: location, distance and date notes', () => {
 });
 
 test('HR summary: what needs attention', () => {
-  const boxes = boxesFor(site), v = fakeVisit(site, { Before: 1, After: 1, Inverter1: 1, Inverter2: 1, Inverter3: 1, Challan: 1 });   // Inverter4, Bill missing
+  const boxes = boxesFor(4), v = fakeVisit(site, { Before: 1, After: 1, Inverter1: 1, Inverter2: 1, Inverter3: 1, Challan: 1 });   // Inverter4, Bill missing
   const a = attention(v, boxes, okAnswers({ electrical: { MCB: 'OFF', DCDB: 'OFF' }, signatures: { customer: 'No' }, work: { earthingPit: 'No' }, overall: 'Not completed' }));
   assert.deepEqual(a.missing, ['Inverter 4', 'Bill']);
   assert.deepEqual(a.off, ['DCDB', 'MCB']); assert.deepEqual(a.noSignature, ['Customer signature']); assert.deepEqual(a.notDone, ['Earthing pit checked']); assert.equal(a.notCompleted, true);
-  const clean = attention(fakeVisit(site, allPhotos(site)), boxes, okAnswers());
+  const clean = attention(fakeVisit(site, allPhotos(4)), boxes, okAnswers());
   assert.deepEqual([clean.missing, clean.off, clean.noSignature, clean.notDone, clean.notCompleted], [[], [], [], [], false]);
 });
 

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HEADERS, boxesFor, formConfig, validateAnswers, buildRow, attention, locationSourceFrom, photoCount, missingPhotos, colIndex } from './form.js';
+import { HEADERS, boxesFor, isBoxKey, declaredInverters, clampInverters, formConfig, validateAnswers, buildRow, attention, locationSourceFrom, photoCount, missingPhotos, colIndex } from './form.js';
 import { State } from './state.js';
 import { LocalStorage, httpError } from './storage/local.js';
 import { OneDriveStorage } from './storage/onedrive.js';
@@ -56,7 +56,7 @@ export function createApp(cfg, deps = {}) {
     const back = daysBetween(date, istDate(now()));
     if (back < 0) throw httpError(400, 'Date is in the future');
     if (back > cfg.maxDaysBack) throw httpError(400, `Date is more than ${cfg.maxDaysBack} days back`);
-    if (box !== undefined && !boxesFor(c).some((b) => b.key === box)) throw httpError(400, 'Unknown box');
+    if (box !== undefined && !isBoxKey(box)) throw httpError(400, 'Unknown box');
     return c;
   }
   const validId = (id) => /^[A-Za-z0-9-]{8,64}$/.test(id || '');
@@ -65,7 +65,7 @@ export function createApp(cfg, deps = {}) {
   function config() {
     return {
       cleanerName: cfg.cleanerName, maxDaysBack: cfg.maxDaysBack, today: istDate(now()), form: formConfig(),
-      clients: cfg.clients.map((c) => ({ id: c.id, name: c.name, inverters: c.inverters, boxes: boxesFor(c) })),
+      clients: cfg.clients.map((c) => ({ id: c.id, name: c.name })),
     };
   }
 
@@ -107,6 +107,7 @@ export function createApp(cfg, deps = {}) {
     if (!validId(b.visit)) throw httpError(400, 'Bad visit id');
     if (b.defects !== 'Yes' && b.defects !== 'No') throw httpError(400, 'Defects answer is required');
     const answers = validateAnswers(b.answers);
+    if (b.inverters !== undefined && clampInverters(b.inverters) === null) throw httpError(400, 'Bad inverter count');
     const details = String(b.details || '').trim().slice(0, 1000);
     return mutex.run(async () => {
       let v = state.visit(b.visit);
@@ -114,13 +115,14 @@ export function createApp(cfg, deps = {}) {
       if (v && (v.client !== b.client || v.date !== b.date)) throw httpError(409, 'Visit does not match its photos');
       v = v || state.create(b.visit, { client: b.client, date: b.date });
       v.cleaner = cfg.cleanerName;
-      const boxes = boxesFor(c), defects = details ? 'Yes' : b.defects;
+      const inverters = declaredInverters(v, b.inverters), boxes = boxesFor(inverters), defects = details ? 'Yes' : b.defects;
+      v.inverters = inverters;
       const row = buildRow({ visit: v, client: c, boxes, answers, defects, details, submittedAt: istDateTime(now()), rootFolder: cfg.rootFolder, gpsMaxDistanceM: cfg.gpsMaxDistanceM });
       const counts = Object.fromEntries(boxes.map((x) => [x.key, photoCount(v, x.key)]));
       // A required photo that never arrived is flagged in Checks (and shown as Not uploaded), never lost the visit.
       // Every answer is kept here in the visit record, not only in the sheet.
       v.answers = answers;
-      v.submitted = { at: now(), defects, details, answers, counts, missing: missingPhotos(v, boxes), checks: row[colIndex('checks')], row, sheetDone: false };
+      v.submitted = { at: now(), defects, details, inverters, answers, counts, missing: missingPhotos(v, boxes), checks: row[colIndex('checks')], row, sheetDone: false };
       await state.save();
       const pushed = await pushRow(v);
       return { ok: true, sheet: pushed ? 'written' : 'waiting' };
@@ -199,10 +201,10 @@ export function createApp(cfg, deps = {}) {
     if (!hrAllowed(req, url)) return send(res, 401, { error: 'Wrong or missing HR key' });
     if (p === '/api/hr/visits') {
       const visits = Object.values(state.data.visits).filter((v) => v.submitted).map((v) => {
-        const c = clientById.get(v.client), sub = v.submitted, boxes = c ? boxesFor(c) : [];
+        const c = clientById.get(v.client), sub = v.submitted, boxes = boxesFor(sub.inverters ?? declaredInverters(v));
         return {
           id: v.id, client: c?.name || v.client, date: v.date, submittedAt: sub.row[colIndex('at')], cleaner: v.cleaner || sub.row[colIndex('cleaner')],
-          counts: sub.counts, defects: sub.defects, details: sub.details, overall: sub.answers?.overall || '',
+          counts: sub.counts, defects: sub.defects, details: sub.details, overall: sub.answers?.overall || '', inverters: sub.inverters ?? declaredInverters(v),
           checks: sub.checks ?? sub.row[colIndex('checks')], folder: sub.row[colIndex('folder')], at: sub.at, sheetPending: sub.sheetDone === false,
           ...attention(v, boxes, sub.answers || { electrical: {}, signatures: {}, work: {}, overall: 'Completed' }),
           photos: Object.entries(v.photos).map(([hash, ph]) => ({ hash, box: ph.box, name: ph.name, location: ph.locationSource || '' })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),

@@ -23,10 +23,11 @@ export function fakeVisit(client, photos = {}, date = '2026-11-02') {
   }
   return { id: 'v-test-0001', client: client.id, date, cleaner: 'Ramesh', photos: out };
 }
-export const allPhotos = (client) => Object.fromEntries(boxesFor(client).map((b) => [b.key, b.key === 'Before' || b.key === 'After' ? 2 : 1]));
+export const allPhotos = (inverters = 2) => Object.fromEntries(boxesFor(inverters).map((b) => [b.key, b.key === 'Before' || b.key === 'After' ? 2 : 1]));
 
-export function rowOf(client, { photos, answers = okAnswers(), defects = 'No', details = '', submittedAt = '2026-11-02 15:30', date = '2026-11-02' } = {}) {
-  return buildRow({ visit: fakeVisit(client, photos ?? allPhotos(client), date), client, boxes: boxesFor(client), answers, defects, details, submittedAt, rootFolder: 'Clients', gpsMaxDistanceM: 300 });
+// inverters: how many inverter boxes the cleaner added to this visit
+export function rowOf(client, { inverters = 2, photos, answers = okAnswers(), defects = 'No', details = '', submittedAt = '2026-11-02 15:30', date = '2026-11-02' } = {}) {
+  return buildRow({ visit: fakeVisit(client, photos ?? allPhotos(inverters), date), client, boxes: boxesFor(inverters), answers, defects, details, submittedAt, rootFolder: 'Clients', gpsMaxDistanceM: 300 });
 }
 
 // Parses one line of our CSV output (every cell is quoted)

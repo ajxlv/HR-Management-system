@@ -132,3 +132,10 @@ select:focus, input:focus, textarea:focus { outline: 3px solid var(--sun); borde
 .missing li { margin: 4px 0; }
 .missing button { all: unset; cursor: pointer; text-decoration: underline; font-weight: 700; }
 .need { outline: 4px solid var(--bad); outline-offset: 2px; border-radius: 16px; background-color: #fff6f5; }
+
+/* inverter boxes are added by the cleaner */
+.invctl { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+.invbtn { min-height: 56px; border-radius: 16px; border: 3px solid var(--brand-2); background: #f4faff; color: var(--brand); font: 800 1rem 'Plus Jakarta Sans', sans-serif; cursor: pointer; }
+.invbtn:disabled { opacity: .45; cursor: default; }
+.invbtn.rm { border-color: var(--line); background: #fbfaf6; color: var(--muted); }
+.pgroup > .hint { margin: 10px 0 0; }
