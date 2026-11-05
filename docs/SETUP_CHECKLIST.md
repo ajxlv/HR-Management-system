@@ -4,7 +4,7 @@ Everything below is a **detail**, not a build task. The app already runs without
 
 | # | What we need | Who knows it | Where it goes | Demo value now |
 |---|---|---|---|---|
-| 1 | Real client list: name, **exact** OneDrive folder name, **number of inverters**, site lat/long (optional) | HR | `server/clients.json` (`inverters`) | 6 demo clients with 1, 2, 4 and 6 inverters |
+| 1 | Real client list (HR's Excel file): site names. Folder = name. Locations optional | HR | `npm run import:clients -- file.xlsx` writes `server/clients.json` | the 53 sites from HR's AMC list |
 | 2 | Name of the OneDrive folder that holds all client folders | HR | `ROOT_FOLDER` in `.env` | `Clients` |
 | 3 | Which PC runs the app, and the path of its OneDrive sync folder | HR / IT | `LOCAL_ROOT` in `.env` (with `STORAGE=local`) | demo folder inside `data/` |
 | 4 | Cleaner's name | HR | `CLEANER_NAME` | `Ramesh` |
@@ -28,9 +28,11 @@ Everything below is a **detail**, not a build task. The app already runs without
 
 - Wires box: **removed**. English only. Overall status: **Completed / Partly completed / Not completed**. "Internet" means the plant's monitoring/data logger is online.
 - Every box needs a photo and every checklist question needs an answer before Submit works.
+- The **cleaner decides the number of inverters** for each visit (+ Add another inverter). Clients have no inverter data.
 
 ## Still open
 
-- Number of inverters for every real client (a client without `inverters` gets 1 and a warning in the log).
+- Are all 53 OneDrive folders there with exactly the site names? Run `npm run seed` on the HR PC to see which are missing.
+- Site locations (optional): add a Location column to HR's sheet and import again.
 - Do the existing Google Sheet tabs hold real visits? If so they need to be renamed before the new layout starts (the columns changed).
 - Marathi labels, if HR wants them later: someone who speaks Marathi should write the words for ON, OFF and the checklist.

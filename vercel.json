@@ -7,6 +7,6 @@
     { "source": "/report.xlsx", "destination": "/api/index" }
   ],
   "functions": {
-    "api/index.js": { "maxDuration": 30, "includeFiles": "{demo/samples/**,server/clients.json}" }
+    "api/index.js": { "maxDuration": 30, "includeFiles": "{demo/samples/**,testlib/clients.fixture.json}" }
   }
 }

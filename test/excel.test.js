@@ -6,10 +6,10 @@ import path from 'node:path';
 import ExcelJS from 'exceljs';
 import { ExcelSheet } from '../server/sheets/excel.js';
 import { HEADERS, colIndex } from '../server/form.js';
-import { loadConfig } from '../server/config.js';
+import { testConfig } from '../testlib/config.js';
 import { okAnswers, rowOf } from '../testlib/helpers.js';
 
-const clients = loadConfig({}).clients;
+const clients = testConfig({}).clients;
 
 test('excel: one tab per client, rows appended, group band, colours set', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'wrs-x-')), file = path.join(dir, 's.xlsx');

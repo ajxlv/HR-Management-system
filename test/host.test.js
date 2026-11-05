@@ -4,13 +4,13 @@ import http from 'node:http';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadConfig } from '../server/config.js';
+import { testConfig } from '../testlib/config.js';
 import { createApp } from '../server/app.js';
 
 // Hosts like Vercel read the body first (req.body) and may hide req.socket. The app must still work.
 test('works when the host pre-reads the body and hides the socket', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'wrs-h-'));
-  const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '1234', SESSION_SECRET: 's' });
+  const cfg = testConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '1234', SESSION_SECRET: 's' });
   for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', 'Clients', c.folder), { recursive: true });
   const app = createApp(cfg);
   const host = http.createServer(async (req, res) => {

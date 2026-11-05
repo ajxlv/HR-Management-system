@@ -2,8 +2,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MAX_INVERTERS } from './form.js';
-
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // Google credentials: either GOOGLE_KEY_FILE (path to the downloaded JSON key) or GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY.
@@ -49,11 +47,6 @@ export function loadConfig(env = process.env, overrides = {}) {
     clientsFile: path.join(here, 'clients.json'),
     ...overrides,
   };
-  cfg.warnings = [];
-  cfg.clients = JSON.parse(readFileSync(cfg.clientsFile, 'utf8')).map((c) => {
-    if (Number.isInteger(c.inverters) && c.inverters >= 1 && c.inverters <= MAX_INVERTERS) return c;
-    cfg.warnings.push(`Client "${c.name}" has no valid "inverters" (1 to ${MAX_INVERTERS}) in clients.json. Using 1.`);
-    return { ...c, inverters: 1 };
-  });
+  cfg.clients = JSON.parse(readFileSync(cfg.clientsFile, 'utf8'));
   return cfg;
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadConfig } from '../server/config.js';
+import { testConfig } from '../testlib/config.js';
 import { createApp } from '../server/app.js';
 import { istDate } from '../server/util.js';
 import { HEADERS, colIndex } from '../server/form.js';
@@ -16,7 +16,7 @@ const jpeg = (tag) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buff
 
 before(async () => {
   dir = mkdtempSync(path.join(tmpdir(), 'wrs-'));
-  const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '4321', SESSION_SECRET: 's3cret', CLEANER_NAME: 'Ramesh' });
+  const cfg = testConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '4321', SESSION_SECRET: 's3cret', CLEANER_NAME: 'Ramesh' });
   for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', 'Clients', c.folder), { recursive: true });
   server = createApp(cfg, { now: () => NOW });
   await new Promise((r) => server.listen(0, r));
@@ -26,7 +26,7 @@ after(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
 
 const api = (p, init = {}) => fetch(base + p, { ...init, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers } });
 const photo = (o, buf) => api('/api/photo?' + new URLSearchParams({ client: 'c01', date: TODAY, ...o }), { method: 'POST', body: buf });
-const visit = (o) => api('/api/visit', { method: 'POST', body: JSON.stringify({ client: 'c01', date: TODAY, defects: 'No', answers: okAnswers(), ...o }) });
+const visit = (o) => api('/api/visit', { method: 'POST', body: JSON.stringify({ client: 'c01', date: TODAY, inverters: 2, defects: 'No', answers: okAnswers(), ...o }) });   // the cleaner added 2 inverter boxes
 const csvRows = (name = 'Sharma Residence') => readFileSync(path.join(dir, 'sheet', `${name}.csv`), 'utf8').trim().split('\n').map(csvCells);
 const cell = (row, header) => row[HEADERS.indexOf(header)];
 const near = { lat: 19.9976, lng: 73.7899, acc: 8, taken: NOW - 60000, tsrc: 'camera', cap: 'camera', src: 'phone' };
@@ -36,18 +36,19 @@ const sendAll = async (id, extra = {}) => {                       // c01 has 2 i
   return extra;
 };
 
-test('needs login, and the config builds the right boxes per client', async () => {
+test('needs login, and the config has no per-client box data', async () => {
   assert.equal((await api('/api/config')).status, 401);
   assert.equal((await api('/api/login', { method: 'POST', body: JSON.stringify({ pin: '0000' }) })).status, 401);
   const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ pin: '4321' }) });
   token = (await r.json()).token;
   const cfg = await (await api('/api/config')).json();
   assert.equal(cfg.cleanerName, 'Ramesh');
-  const keys = (id) => cfg.clients.find((c) => c.id === id).boxes.map((b) => b.key);
-  assert.deepEqual(keys('c01'), ['Before', 'After', 'Inverter1', 'Inverter2', 'Challan', 'Bill']);
-  assert.equal(keys('c02').filter((k) => k.startsWith('Inverter')).length, 4);
-  assert.equal(keys('c03').filter((k) => k.startsWith('Inverter')).length, 6);
-  assert.ok(!keys('c01').includes('Wires'));
+  assert.deepEqual(cfg.clients[0], { id: 'c01', name: 'Sharma Residence' });              // just id and name: no inverter count, no boxes
+  assert.ok(cfg.clients.every((c) => Object.keys(c).sort().join() === 'id,name'));
+  // the form is built from this template: the Inverter box is repeated as many times as the cleaner adds it
+  assert.deepEqual(cfg.form.boxes.map((b) => b.key), ['Before', 'After', 'Inverter1', 'Challan', 'Bill']);
+  assert.equal(cfg.form.maxInverters, 12);
+  assert.ok(!cfg.form.boxes.some((b) => b.key === 'Wires'));
   assert.deepEqual(cfg.form.overall, ['Completed', 'Partly completed', 'Not completed']);
   assert.deepEqual(cfg.form.electricalOptions, ['ON', 'OFF', 'N/A']);
   assert.equal(cfg.form.electrical.length, 7);
@@ -57,7 +58,11 @@ test('rejects bad input', async () => {
   const buf = jpeg('x');
   assert.equal((await photo({ visit: 'visit-bad-1', box: 'Before', client: 'nope' }, buf)).status, 400);
   assert.equal((await photo({ visit: 'visit-bad-1', box: 'Wires' }, buf)).status, 400);        // Wires no longer exists
-  assert.equal((await photo({ visit: 'visit-bad-1', box: 'Inverter3' }, buf)).status, 400);     // c01 has only 2 inverters
+  assert.equal((await photo({ visit: 'visit-bad-1', box: 'Inverter13' }, buf)).status, 400);    // at most 12 inverter boxes
+  assert.equal((await photo({ visit: 'visit-bad-1', box: 'Inverter0' }, buf)).status, 400);
+  assert.equal((await visit({ visit: 'visit-bad-6', inverters: 0 })).status, 400);              // a visit needs 1 to 12 inverters
+  assert.equal((await visit({ visit: 'visit-bad-7', inverters: 13 })).status, 400);
+  assert.equal((await visit({ visit: 'visit-bad-8', inverters: '2' })).status, 400);
   assert.equal((await photo({ visit: 'visit-bad-1', box: 'Before', date: '2026-11-03' }, buf)).status, 400); // future
   assert.equal((await photo({ visit: 'visit-bad-1', box: 'Before', date: '2026-10-20' }, buf)).status, 400); // too old
   assert.equal((await photo({ visit: 'visit-bad-1', box: 'Before' }, Buffer.from('not a jpeg'))).status, 400);
@@ -158,19 +163,31 @@ test('a visit with a missing required photo is saved, not lost', async () => {
   assert.equal(cell(row, 'After photos taken'), 'No');
 });
 
-test('other clients: inverter boxes follow the client', async () => {
+test('the cleaner sets the inverter count on each visit, for any client', async () => {
   const id = 'visit-0004-dddd', p = (box) => api('/api/photo?' + new URLSearchParams({ client: 'c03', date: TODAY, visit: id, box }), { method: 'POST', body: jpeg(`c3-${box}`) });
-  assert.equal((await p('Inverter6')).status, 200);       // c03 has 6 inverters
-  assert.equal((await p('Inverter7')).status, 400);
-  const r = await visit({ visit: id, client: 'c03' });
-  assert.equal(r.status, 200);
+  assert.equal((await p('Inverter6')).status, 200);       // any client can have up to 12 inverter boxes
+  assert.equal((await p('Inverter13')).status, 400);
+  assert.equal((await visit({ visit: id, client: 'c03', inverters: 6 })).status, 200);
   assert.equal(cell(csvRows('Deshmukh Hospital')[1], 'Inverters'), '1 of 6 uploaded');
+  // nothing declared: the count is the highest inverter box he uploaded to
+  const id2 = 'visit-0008-hhhh';
+  await api('/api/photo?' + new URLSearchParams({ client: 'c04', date: TODAY, visit: id2, box: 'Inverter3' }), { method: 'POST', body: jpeg('c4-i3') });
+  const noCount = await api('/api/visit', { method: 'POST', body: JSON.stringify({ client: 'c04', date: TODAY, defects: 'No', answers: okAnswers(), visit: id2 }) });
+  assert.equal(noCount.status, 200);
+  assert.equal(cell(csvRows('Gokhale Apartments')[1], 'Inverters'), '1 of 3 uploaded');
+  // a declared count below what he uploaded is raised, never hides a photo
+  const id3 = 'visit-0009-iiii';
+  await api('/api/photo?' + new URLSearchParams({ client: 'c05', date: TODAY, visit: id3, box: 'Inverter2' }), { method: 'POST', body: jpeg('c5-i2') });
+  await visit({ visit: id3, client: 'c05', inverters: 1 });
+  assert.equal(cell(csvRows('Nashik Textile Mills')[1], 'Inverters'), '1 of 2 uploaded');
+  const rec = JSON.parse(readFileSync(path.join(dir, 'state.json'), 'utf8')).visits;
+  assert.equal(rec[id].inverters, 6); assert.equal(rec[id].submitted.inverters, 6); assert.equal(rec[id2].inverters, 3); assert.equal(rec[id3].inverters, 2);
 });
 
 test('failed storage does not lose or double anything', async () => {
   const r = await photo({ visit: 'visit-0005-eeee', box: 'Before', client: 'c06', ...near }, jpeg('c06'));
   assert.equal(r.status, 200); // c06 folder exists (created in setup)
-  const missing = createApp(loadConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '' }), { now: () => NOW });
+  const missing = createApp(testConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '' }), { now: () => NOW });
   await new Promise((res) => missing.listen(0, res));
   const url = `http://localhost:${missing.address().port}/api/photo?client=c01&date=${TODAY}&box=Before&visit=visit-0006-ffff`;
   rmSync(path.join(dir, 'onedrive', 'Clients', 'Sharma Residence'), { recursive: true });

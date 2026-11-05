@@ -5,7 +5,7 @@ import { mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../server/config.js';
 import { createApp } from '../server/app.js';
-import { seedDemo } from '../server/demo-seed.js';
+import { seedDemo, DEMO_CLIENTS_FILE } from '../server/demo-seed.js';
 
 const dir = '/tmp/wrs-demo';
 const e = process.env;
@@ -13,7 +13,7 @@ const cfg = loadConfig({
   DATA_DIR: dir, SHEET: 'excel', STORAGE: 'local',
   CLEANER_NAME: e.CLEANER_NAME || 'Ramesh', CLEANER_PIN: e.CLEANER_PIN || '1234',
   REPORT_KEY: e.REPORT_KEY || 'hr-demo', SESSION_SECRET: e.SESSION_SECRET || 'demo-secret',
-}, { exposeErrors: true }); // demo only: show the real error text to help debugging
+}, { exposeErrors: true, clientsFile: DEMO_CLIENTS_FILE }); // demo only: show the real error text to help debugging
 const app = createApp(cfg);
 
 // Start-up runs on the first request, not at import time, and loads the sample data in-process (no network).

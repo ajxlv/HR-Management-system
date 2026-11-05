@@ -3,13 +3,23 @@
 import { httpError } from './storage/local.js';
 import { istDate, distanceM } from './util.js';
 
-// ---------- photo boxes (the Inverter boxes depend on the client) ----------
+// ---------- photo boxes ----------
+// The cleaner decides how many inverters a site has: the form starts with one Inverter box and he adds more.
+// The count travels with the visit. Clients carry no inverter data.
 export const MAX_INVERTERS = 12;
-export const inverterCount = (client) => (Number.isInteger(client?.inverters) && client.inverters >= 1 && client.inverters <= MAX_INVERTERS ? client.inverters : 1);
+export const clampInverters = (n) => (Number.isInteger(n) && n >= 1 && n <= MAX_INVERTERS ? n : null);
+const INVERTER_KEY = /^Inverter([1-9]\d?)$/;
+export const inverterIndex = (key) => { const m = INVERTER_KEY.exec(key); return m ? +m[1] : 0; };
+export const isBoxKey = (key) => ['Before', 'After', 'Challan', 'Bill'].includes(key) || (inverterIndex(key) >= 1 && inverterIndex(key) <= MAX_INVERTERS);
+// The count of inverter boxes the visit really has: what the cleaner declared, but never fewer than the highest one he uploaded to.
+export function declaredInverters(visit, declared) {
+  const highest = Math.max(0, ...Object.values(visit.photos).map((p) => inverterIndex(p.box)));
+  return Math.max(clampInverters(declared) ?? 1, highest);
+}
 
 // Every box takes several photos, from the camera or the gallery. Only Before and After need a location.
-export function boxesFor(client) {
-  const n = inverterCount(client);
+export function boxesFor(inverters) {
+  const n = clampInverters(inverters) ?? 1;
   return [
     { key: 'Before', label: 'BEFORE', group: 'Site photos', gps: true, required: true, hint: 'Panels before cleaning' },
     { key: 'After', label: 'AFTER', group: 'Site photos', gps: true, required: true, hint: 'Panels after cleaning' },
@@ -44,7 +54,7 @@ export const WORK = [
 export const OVERALL = ['Completed', 'Partly completed', 'Not completed'];
 
 // What the app sends to the phone so the form is built from this file.
-export const formConfig = () => ({ electricalOptions: ELECTRICAL_OPTIONS, electrical: ELECTRICAL, signatures: SIGNATURES, work: WORK, yesNo: YES_NO, overall: OVERALL });
+export const formConfig = () => ({ boxes: boxesFor(1), maxInverters: MAX_INVERTERS, electricalOptions: ELECTRICAL_OPTIONS, electrical: ELECTRICAL, signatures: SIGNATURES, work: WORK, yesNo: YES_NO, overall: OVERALL });
 
 // ---------- sheet columns (order = order in the sheet) ----------
 const photoCol = (key, header, width = 105) => ({ key, header, group: 'Photos', width });

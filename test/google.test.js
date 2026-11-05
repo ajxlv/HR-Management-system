@@ -7,14 +7,15 @@ import path from 'node:path';
 import { createFakeGoogle } from '../testlib/fake-google.js';
 import { GoogleSheet } from '../server/sheets/google.js';
 import { explain, fromApiResponse } from '../server/sheets/google-errors.js';
-import { loadConfig, loadGoogleCredentials } from '../server/config.js';
+import { loadGoogleCredentials } from '../server/config.js';
+import { testConfig } from '../testlib/config.js';
 import { HEADERS, colIndex, COLUMNS } from '../server/form.js';
 import { okAnswers, rowOf, fakeVisit } from '../testlib/helpers.js';
 import { createApp } from '../server/app.js';
 import { letter, CLIENT_TAB, OVERVIEW_HEADERS } from '../server/sheets/layout.js';
 
 const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
-const clients = loadConfig({}).clients;
+const clients = testConfig({}).clients;
 const make = (extra = {}, fake = createFakeGoogle()) => ({
   fake,
   sheet: new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@wrs-hr.iam.gserviceaccount.com', privateKey, rootFolder: 'Clients', clients, ...extra }, HEADERS, { fetch: fake.fetch, now: () => Date.parse('2026-11-02T10:00:00Z') }),
@@ -36,6 +37,7 @@ test('new client tab: banner, group band, header at row 5, data from row 6, appe
   assert.deepEqual(HEADERS.map((_, i) => cell(`${letter(i)}5`)), HEADERS);
   assert.deepEqual(fake.appended.map((a) => a.row), [6, 7]);                       // never on rows 1 to 5
   assert.equal(fake.appended[0].option, 'USER_ENTERED');                           // real date, not text
+  assert.equal(fake.appended[0].insert, 'OVERWRITE');                              // fills pre-formatted rows; INSERT_ROWS copied the header style
   assert.equal(fake.appended[0].values.length, 28);
   const sh = fake.sheet(t);
   assert.equal(sh.frozen, 5); assert.equal(sh.frozenCols, 3);                      // header rows, and date + submitted at + cleaner
@@ -151,7 +153,7 @@ test('credentials: key file, real newlines and escaped newlines all work', () =>
 // ---- retry queue ----
 const jpeg = (t) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(t)]);
 function appWith(fake, dir) {
-  const cfg = loadConfig({ DATA_DIR: dir, SHEET: 'csv' }, { sheetRetryMs: 0 });
+  const cfg = testConfig({ DATA_DIR: dir, SHEET: 'csv' }, { sheetRetryMs: 0 });
   for (const c of cfg.clients) mkdirSync(path.join(dir, 'onedrive', 'Clients', c.folder), { recursive: true });
   const sheet = new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@x', privateKey, clients: cfg.clients }, HEADERS, { fetch: fake.fetch });
   return createApp(cfg, { sheet, now: () => Date.parse('2026-11-02T10:00:00Z') });

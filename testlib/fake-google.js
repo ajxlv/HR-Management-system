@@ -77,7 +77,7 @@ export function createFakeGoogle(sheetId = 'SHEET123') {
       let last = +m[4] - 1; while (rowFilled(s, last + 1)) last++;
       const at = last + 1;
       body.values.forEach((row, i) => row.forEach((v, j) => s.cells.set(key(at + i, j), v)));
-      fake.appended.push({ title: s.title, row: at + 1, values: body.values[0], option: u.searchParams.get('valueInputOption') });
+      fake.appended.push({ title: s.title, row: at + 1, values: body.values[0], option: u.searchParams.get('valueInputOption'), insert: u.searchParams.get('insertDataOption') });
       return reply(200, { updates: { updatedRange: `${s.title}!A${at + 1}` } });
     }
     if (rest.endsWith(':clear')) { const m = rest.slice('/values/'.length, -':clear'.length).match(A1); byTitle((m[1] || m[2]).replace(/''/g, "'"))?.cells.delete(key(+m[4] - 1, colIndex(m[3]))); return reply(200, {}); }
