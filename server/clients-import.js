@@ -1,6 +1,6 @@
 // Turns HR's client list (Excel or CSV) into server/clients.json, with checks.
 // Used by `npm run import:clients` and by the tests. Reads only the site name (and, if the sheet has them,
-// a Folder and a Location column). Phone numbers, addresses and the rest of the sheet are never copied.
+// a Folder, a Location, an Installation date and an AMC expiry column). Phone numbers, addresses and the rest of the sheet are never copied.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import ExcelJS from 'exceljs';
@@ -69,6 +69,8 @@ export function mapColumns({ grid, column }) {
   return {
     headerRow, nameCol, headerless,
     folderCol: find(/^(onedrive\s+)?folder(\s+name)?$/i),
+    installedCol: find(/^(date\s+of\s+)?install(ation|ed)(\s+date|\s+on)?$/i),
+    amcExpiryCol: find(/^amc\s+(expiry|expires|end)(\s+date)?$/i),     // never the contract "start date" / "end date" columns of the AMC list
     locationCol: find(/^(location|maps?(\s+link)?|google\s+maps|lat\s*[,/]?\s*lng|coordinates)$/i),
     nameHeading: headerless ? '(no heading)' : heading[nameCol],
   };
@@ -86,6 +88,17 @@ export function cleanName(raw) {
   const noDot = s.replace(/[. ]+$/, '');                                   // Windows and OneDrive drop a trailing dot from a folder name
   if (noDot !== s) { fixes.push('trailing dot removed'); s = noDot; }
   return { value: s, fixes };
+}
+
+// A date typed by the company: 2027-03-31, 31-03-2027, 31/03/2027 or an Excel date. Day first, as in India. Returns '' (empty), a date text, or undefined (not a date).
+export function parseDate(text) {
+  const t = String(text).trim(); if (!t) return '';
+  let y, m, d, x;
+  if ((x = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/))) [y, m, d] = [+x[1], +x[2], +x[3]];
+  else if ((x = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/))) [d, m, y] = [+x[1], +x[2], +x[3]];
+  else return undefined;
+  const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return !Number.isNaN(Date.parse(iso)) && new Date(`${iso}T00:00:00Z`).toISOString().slice(0, 10) === iso && y >= 2000 && y <= 2100 ? iso : undefined;
 }
 
 export function parseLocation(text) {
@@ -123,6 +136,12 @@ export function buildClients({ grid, column }, existing = [], { replaceAll = fal
       else if (loc.lat < INDIA.lat[0] || loc.lat > INDIA.lat[1] || loc.lng < INDIA.lng[0] || loc.lng > INDIA.lng[1]) bad(`the location ${loc.lat}, ${loc.lng} is outside India, are latitude and longitude swapped?`, 'check the location');
       else Object.assign(entry, loc);
     }
+    for (const [col, field, what] of [[map.installedCol, 'installed', 'installation date'], [map.amcExpiryCol, 'amcExpiry', 'AMC expiry date']]) {
+      if (col < 0 || !(grid[r][col] || '').trim()) continue;
+      const d = parseDate(grid[r][col]);
+      if (d === undefined) bad(`the ${what} "${grid[r][col]}" is not a date`, 'use 31-03-2027 (day-month-year)'); else entry[field] = d;
+    }
+    if (entry.installed && entry.amcExpiry && entry.amcExpiry < entry.installed) bad('the AMC expiry is before the installation date', 'check both dates');
     rows.push(entry);
   }
   // exact duplicates (ignoring case and spacing) would share a folder or a sheet tab. Similar names are fine.
@@ -147,6 +166,8 @@ export function buildClients({ grid, column }, existing = [], { replaceAll = fal
     used.add(id);
     const out = { id, name: e.name, folder: e.folder };
     if (e.lat !== undefined) { out.lat = e.lat; out.lng = e.lng; }
+    if (e.installed) out.installed = e.installed;
+    if (e.amcExpiry) out.amcExpiry = e.amcExpiry;
     return out;
   });
   const gone = replaceAll ? [] : existing.filter((c) => !used.has(c.id));
@@ -182,6 +203,7 @@ export function checkClientList(clients) {
     if ((c.name || '').length > MAX_NAME) bad('name too long for a sheet tab');
     if (c.inverters !== undefined) bad('"inverters" must not be on a client: the cleaner sets it on each visit');
     if ((c.lat === undefined) !== (c.lng === undefined)) bad('lat without lng or the other way round');
+    for (const k of ['installed', 'amcExpiry']) if (c[k] !== undefined && parseDate(c[k]) !== c[k]) bad(`${k} is not a date like 2027-03-31`);
     for (const [m, k, what] of [[seen.name, keyOf(c.name || ''), 'name'], [seen.folder, keyOf(c.folder || ''), 'folder'], [seen.tab, tabOf(c.name || ''), 'sheet tab name']]) {
       if (m.has(k)) bad(`same ${what} as row ${m.get(k)}`); else m.set(k, row);
     }

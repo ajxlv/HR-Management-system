@@ -6,9 +6,9 @@ import { COLUMNS, GROUP_SPANS } from '../form.js';
 import { classify } from './status.js';
 
 const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
-const FILL = { good: fill('FFCDEED5'), bad: fill('FFF8C9C9'), warn: fill('FFFFE8B3'), neutral: fill('FFE5E7EB') };
+const FILL = { good: fill('FFCDEED5'), bad: fill('FFF8C9C9'), warn: fill('FFFFE8B3'), neutral: fill('FFE5E7EB'), blue: fill('FFD6ECFA') };
 const HEAD = fill('FF0B3D2E');
-const GROUP = { 'Photos': 'FF1F6F8B', 'Electrical checklist': 'FFB7791F', 'Signatures': 'FF6B4E9B', 'Work done': 'FF0B5D4B', 'Result': 'FF374151' };
+const GROUP = { 'Photos': 'FF1F6F8B', 'Electrical checklist': 'FFB7791F', 'Signatures': 'FF6B4E9B', 'Work done': 'FF0B5D4B', 'Result': 'FF374151', 'AMC': 'FF7A5C2E' };
 
 // One Excel workbook, one tab per client, one row per visit. (The Google Sheet is the full-featured view.)
 export class ExcelSheet {
@@ -33,7 +33,8 @@ export class ExcelSheet {
       ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
     }
     const r = ws.addRow(row);
-    COLUMNS.forEach((c, i) => { const k = classify(c.key, row[i]); if (k) r.getCell(i + 1).fill = FILL[k]; });
+    const today = String(row[1] || '').slice(0, 10);       // the submitted-at column starts with the date
+    COLUMNS.forEach((c, i) => { const k = classify(c.key, row[i], today); if (k) r.getCell(i + 1).fill = FILL[k]; });
     r.eachCell((c) => { c.alignment = { vertical: 'top', wrapText: true }; });
 
     await fs.mkdir(path.dirname(this.file), { recursive: true });

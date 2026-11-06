@@ -139,3 +139,31 @@ select:focus, input:focus, textarea:focus { outline: 3px solid var(--sun); borde
 .invbtn:disabled { opacity: .45; cursor: default; }
 .invbtn.rm { border-color: var(--line); background: #fbfaf6; color: var(--muted); }
 .pgroup > .hint { margin: 10px 0 0; }
+
+/* "+ Add inverter": a dashed box inside the inverter grid */
+.tile.addtile { all: unset; box-sizing: border-box; min-width: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 190px; padding: 10px; border: 3px dashed var(--brand-2); border-radius: 20px; background: #f4faff; color: var(--brand); }
+.tile.addtile .plus { font-size: 3.4rem; line-height: 1; font-weight: 800; }
+.tile.addtile .lbl { margin-top: 6px; font-size: clamp(.95rem, 4.6vw, 1.2rem); }
+.tile.addtile .cnt { color: var(--muted); }
+.tile.addtile:focus-visible { outline: 4px solid var(--brand-2); outline-offset: 2px; }
+
+/* checklist extras: the Internet line is BLUE when connected */
+.opts button.on.blue { background: #1769d1; border-color: #1769d1; color: #fff; }
+.crow .note { font-size: .85rem; font-weight: 600; color: var(--muted); margin: -2px 0 8px; }
+
+/* client signature */
+.sigwrap { position: relative; border: 3px solid var(--brand-2); border-radius: 16px; background: #fff; overflow: hidden; }
+#sigpad { display: block; width: 100%; height: auto; aspect-ratio: 900 / 380; touch-action: none; cursor: crosshair; }
+#sigpad.off { opacity: .35; cursor: default; }
+.sigcorner { position: absolute; top: 8px; left: 12px; right: 12px; font-weight: 800; font-size: .95rem; color: var(--brand); pointer-events: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sigempty { position: absolute; inset: 0; display: grid; place-items: center; color: #aab6c0; font-weight: 700; pointer-events: none; }
+.sigbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; margin-top: 8px; }
+.sigstamp { font-weight: 700; font-size: .9rem; color: var(--good); }
+.ghost.small { padding: 8px 12px; font-size: .85rem; width: auto; margin: 0; }
+.signa { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 700; }
+.signa input { width: 24px; height: 24px; }
+#sigreasonwrap input { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 14px; border: 3px solid var(--line); border-radius: 14px; font: 600 1rem 'Plus Jakarta Sans', sans-serif; }
+.amc { margin-top: 12px; padding: 12px 14px; border-radius: 14px; font-weight: 700; border: 2px solid var(--line); background: #f4f7f4; }
+.amc.soon { background: #fff6e0; border-color: #e0a100; color: #7a5200; }
+.amc.expired { background: #fff1f0; border-color: var(--bad); color: var(--bad); }
+.ver { text-align: center; color: var(--muted); font-size: .75rem; margin: 18px 0 8px; }

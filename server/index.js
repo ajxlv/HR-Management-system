@@ -4,7 +4,8 @@ import { createApp } from './app.js';
 
 loadEnvFile();
 const cfg = loadConfig();
-if (!cfg.cleanerPin) console.warn('WARNING: CLEANER_PIN is empty, so there is no login. Set it before go-live.');
+if (!cfg.vendors.length) console.warn('WARNING: no PIN is set (VENDORS or CLEANER_PIN), so there is no login. Set it before go-live.');
+else console.log(`Sign-in: ${cfg.vendors.length} vendor${cfg.vendors.length === 1 ? '' : 's'} (${cfg.vendors.map((v) => v.name).join(', ')})`);
 const app = createApp(cfg);
 app.listen(cfg.port, () => {
   console.log(`WRS app on http://localhost:${cfg.port}  (photos: ${cfg.storage}, sheet: ${cfg.sheet})`);

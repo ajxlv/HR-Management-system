@@ -20,8 +20,8 @@ const make = (extra = {}, fake = createFakeGoogle()) => ({
   fake,
   sheet: new GoogleSheet({ sheetId: 'SHEET123', clientEmail: 'wrs@wrs-hr.iam.gserviceaccount.com', privateKey, rootFolder: 'Clients', clients, ...extra }, HEADERS, { fetch: fake.fetch, now: () => Date.parse('2026-11-02T10:00:00Z') }),
 });
-// A full 28-cell row for client 0 (Sharma Residence, 2 inverters), like the app builds it
-const row = (o = {}) => { const r = rowOf(clients[0], { photos: { Before: 2, After: 1, Inverter1: 1, Challan: 1 }, answers: okAnswers({ electrical: { MCB: 'OFF' } }), defects: 'Yes', details: 'Cracked panel' }); for (const [k, v] of Object.entries(o)) r[/^\d+$/.test(k) ? +k : HEADERS.indexOf(k)] = v; return r; };
+// A full 33-cell row for client 0 (Sharma Residence, 2 inverters), like the app builds it
+const row = (o = {}) => { const r = rowOf(clients[0], { photos: { Before: 2, After: 1, Inverter1: 1, Challan: 1 }, answers: okAnswers({ electrical: { ACDB: 'OFF' } }), defects: 'Yes', details: 'Cracked panel' }); for (const [k, v] of Object.entries(o)) r[/^\d+$/.test(k) ? +k : HEADERS.indexOf(k)] = v; return r; };
 
 test('new client tab: banner, group band, header at row 5, data from row 6, appended below the banner', async () => {
   const { fake, sheet } = make({ logoUrl: 'https://example.com/logo.png' });
@@ -32,21 +32,22 @@ test('new client tab: banner, group band, header at row 5, data from row 6, appe
   assert.equal(cell('D1'), 'Sharma Residence: Panel Cleaning Visits');
   assert.match(cell('A2'), /^Last updated: 2026-11-02 \d\d:\d\d IST$/);
   assert.equal(cell('D2'), 'Photos: OneDrive / Clients / Sharma Residence');
-  // the group band above the header: Photos | Electrical checklist | Signatures | Work done | Result
-  assert.deepEqual(['D4', 'I4', 'P4', 'R4', 'X4'].map(cell), ['Photos', 'Electrical checklist', 'Signatures', 'Work done', 'Result']);
+  // the group band above the header: Photos | Electrical checklist | Signatures | Work done | Result | AMC
+  const at = (h) => `${letter(HEADERS.indexOf(h))}4`;
+  assert.deepEqual(['Before', 'ACDB', 'Customer signature', 'Session cleaning', 'Overall status', 'Installed on'].map((h) => cell(at(h))), ['Photos', 'Electrical checklist', 'Signatures', 'Work done', 'Result', 'AMC']);
   assert.deepEqual(HEADERS.map((_, i) => cell(`${letter(i)}5`)), HEADERS);
   assert.deepEqual(fake.appended.map((a) => a.row), [6, 7]);                       // never on rows 1 to 5
   assert.equal(fake.appended[0].option, 'USER_ENTERED');                           // real date, not text
   assert.equal(fake.appended[0].insert, 'OVERWRITE');                              // fills pre-formatted rows; INSERT_ROWS copied the header style
-  assert.equal(fake.appended[0].values.length, 28);
+  assert.equal(fake.appended[0].values.length, 33);
   const sh = fake.sheet(t);
   assert.equal(sh.frozen, 5); assert.equal(sh.frozenCols, 3);                      // header rows, and date + submitted at + cleaner
   assert.ok(sh.filter, 'basic filter set');
   assert.equal(sh.bands.length, 1);
-  assert.equal(sh.cf.length, 23);                                                  // see layout.js: uploaded/not x4, inverters x2, ON/OFF/N/A, sign, work, overall x3, defects x2, checks
+  assert.equal(sh.cf.length, 34);                                                  // see layout.js: uploaded/not x7 columns, ON/OFF/N/A + BLUE, sign x2, client sign x4, work x2, overall x3, defects x2, checks, AMC x2
   // Google refuses to freeze columns through a merged cell: no merge may cross the line after column 3
   assert.ok(sh.merges.every((m) => m.endColumnIndex <= 3 || m.startColumnIndex >= 3), 'no merge crosses the freeze line');
-  assert.equal(sh.merges.length, 4 + 1 + 5);                                       // logo, title, updated, photos line, blank corner, five groups
+  assert.equal(sh.merges.length, 4 + 1 + 6);                                       // logo, title, updated, photos line, blank corner, six groups
   assert.equal(sh.requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'COLUMNS').length, HEADERS.length);
   const heights = sh.requests.filter((r) => r.updateDimensionProperties?.range.dimension === 'ROWS').map((r) => r.updateDimensionProperties.properties.pixelSize);
   assert.deepEqual(heights, CLIENT_TAB.heights);
@@ -67,14 +68,16 @@ test('colour rules cover ON / OFF / N/A, Yes / No, Inverters and the overall sta
   const hc = (h) => HEADERS.indexOf(h);
   const at = (col, v) => rules.find((r) => r.cols[0] <= hc(col) && hc(col) < r.cols[1] && r.v === v);
   const colour = (rule) => { const { red: r, green: g, blue: b } = rule.bg; return Math.abs(r - g) < 0.03 && Math.abs(g - b) < 0.05 ? 'grey' : r > 0.9 && g < 0.9 ? 'red' : g > 0.9 && r < 0.9 ? 'green' : 'amber'; };
-  assert.equal(colour(at('MCB', 'ON')), 'green'); assert.equal(colour(at('MCB', 'OFF')), 'red'); assert.equal(colour(at('MCB', 'N/A')), 'grey');
+  assert.equal(colour(at('ACDB', 'ON')), 'green'); assert.equal(colour(at('ACDB', 'OFF')), 'red'); assert.equal(colour(at('DC SPD', 'N/A')), 'grey');
+  assert.equal(at('Internet', 'BLUE').bg.blue > at('Internet', 'BLUE').bg.red, true, 'BLUE is a blue fill');
   assert.equal(colour(at('Customer signature', 'No')), 'red'); assert.equal(colour(at('Supervisor signature', 'Yes')), 'green');
   assert.equal(colour(at('Washed with water', 'No')), 'red'); assert.equal(colour(at('After photos taken', 'Yes')), 'green');
   assert.equal(colour(at('Overall status', 'Not completed')), 'red'); assert.equal(colour(at('Overall status', 'Completed')), 'green'); assert.ok(at('Overall status', 'Partly completed'));
   assert.equal(colour(at('Bill', 'Not uploaded')), 'red'); assert.equal(colour(at('Before', 'Uploaded')), 'green');
-  const inv = rules.filter((r) => r.cols[0] === colIndex('Inverters'));
-  assert.equal(inv.length, 2);
-  assert.ok(inv.every((r) => r.type === 'CUSTOM_FORMULA' && r.v.includes('FIND(" of "')), 'Inverters is judged from "n of m uploaded"');
+  assert.equal(colour(at('Earthing pit after', 'Not uploaded')), 'red'); assert.equal(colour(at('Inverters', 'Uploaded')), 'green'); assert.equal(colour(at('Inverters', 'Not uploaded')), 'red');
+  assert.equal(colour(at('Client signature', 'Signed')), 'green'); assert.equal(colour(at('Client signature', 'Not taken')), 'red'); assert.equal(colour(at('Client signature', 'Not available')), 'amber');
+  assert.equal(at('Client signature', 'Signed (picture').bg.red > at('Client signature', 'Signed (picture').bg.blue, true, 'picture missing is amber, above the plain Signed rule');
+  assert.ok(rules.filter((r) => r.cols[0] === colIndex('amcExpiry')).length === 2, 'AMC expiry: amber inside 60 days, red once passed');
   assert.ok(rules.some((r) => r.cols[0] === colIndex('checks') && r.v.includes('<>"OK"')), 'Checks amber when not OK');
 });
 
@@ -89,7 +92,8 @@ test('Overview tab is first, with the new OFF and not-completed counts, as live 
   assert.equal(fake.cell('Overview', 'A5'), 'Sharma Residence'); assert.equal(fake.cell('Overview', 'A6'), 'Patil Agro Industries');
   const f = Object.fromEntries(OVERVIEW_HEADERS.map((h, i) => [h, fake.cell('Overview', `${letter(i)}5`)]));
   assert.match(f['Last visit date'], /MAXIFS/); assert.match(f['Visits this month'], /COUNTIFS/);
-  assert.match(f['Visits with missing photos'], /SUMPRODUCT.*"Not uploaded".*FIND\(" of "/);
+  assert.match(f['Visits with missing photos'], /SUMPRODUCT.*"Not uploaded"/);
+  for (const h of ['Earthing pit before', 'Earthing pit after', 'Inverters']) assert.ok(f['Visits with missing photos'].includes('$' + letter(colIndex(HEADERS.indexOf(h) >= 0 ? COLUMNS[HEADERS.indexOf(h)].key : h)) + '$6'), h + ' counts when not uploaded (Inverters means not even Inverter 1)');
   assert.match(f['Visits with any OFF item'], /SUMPRODUCT.*"OFF"/);
   assert.match(f['Visits not completed'], /COUNTIFS\(.*"<>Completed".*"<>"\)/);
   assert.match(f['Open defects'], /COUNTIFS.*"Yes"/);

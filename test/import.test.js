@@ -187,3 +187,42 @@ test('the command line refuses to write when a check fails, and says why', async
   assert.deepEqual(read(out).map((c) => c.name), ['Fine Too', 'Good']);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------- AMC dates typed in by the company ----------
+test('optional Installation date and AMC expiry columns are read; the contract start date is never used', async () => {
+  const dir = tmp();
+  const rows = [
+    ['Site', 'start date', 'end date', 'Installation date', 'AMC expiry'],
+    ['Go Green', '2025-12-01', '2026-11-30', '15-03-2024', '31/03/2027'],
+    ['Samsonite', '2026-08-01', '2027-07-31', '', ''],
+    ['Koso J1', null, null, new Date(Date.UTC(2023, 5, 10)), '2026-12-15'],
+  ];
+  const { out, r } = await run(dir, rows, { replaceAll: true });
+  assert.equal(r.ok, true, JSON.stringify(r.problems));
+  const byName = Object.fromEntries(read(out).map((c) => [c.name, c]));
+  assert.deepEqual([byName['Go Green'].installed, byName['Go Green'].amcExpiry], ['2024-03-15', '2027-03-31']);   // day first, as in India
+  assert.equal(byName['Samsonite'].installed, undefined); assert.equal(byName['Samsonite'].amcExpiry, undefined);   // the "start date" / "end date" columns are not copied
+  assert.deepEqual([byName['Koso J1'].installed, byName['Koso J1'].amcExpiry], ['2023-06-10', '2026-12-15']);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a date that is not a date, or an AMC that ends before the installation, stops the import', async () => {
+  for (const [rows, text] of [
+    [[['Site', 'AMC expiry'], ['A', 'next year']], /AMC expiry date .{1,3}next year.{1,3} is not a date/],
+    [[['Site', 'AMC expiry'], ['A', '31-02-2027']], /not a date/],
+    [[['Site', 'Installation date', 'AMC expiry'], ['A', '2026-05-01', '2025-05-01']], /before the installation/],
+  ]) {
+    const dir = tmp(), { r, out } = await run(dir, rows, { replaceAll: true });
+    assert.equal(r.ok, false); assert.equal(existsSync(out), false); assert.match(JSON.stringify(r.problems), text);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('parseDate and checkClientList', async () => {
+  const { parseDate, checkClientList } = await import('../server/clients-import.js');
+  assert.equal(parseDate(''), ''); assert.equal(parseDate('2027-03-31'), '2027-03-31'); assert.equal(parseDate('1-2-2027'), '2027-02-01');
+  for (const bad of ['31-13-2027', '2027-02-30', 'tomorrow', '12/2027', '1999-01-01']) assert.equal(parseDate(bad), undefined, bad);
+  const ok = { id: 'c01', name: 'A', folder: 'A' };
+  assert.deepEqual(checkClientList([{ ...ok, installed: '2024-01-01', amcExpiry: '2027-01-01' }]), []);
+  assert.match(JSON.stringify(checkClientList([{ ...ok, amcExpiry: '01-01-2027' }])), /amcExpiry is not a date/);
+});

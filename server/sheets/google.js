@@ -108,7 +108,7 @@ export class GoogleSheet {
       id = r.replies[0].addSheet.properties.sheetId; this.tabs.set(OVERVIEW_TAB, id);
     }
     await this.batch(overviewRequests(id, existing));
-    const rows = this.clients.filter((c) => this.tabs.has(safeName(c.name))).map((c) => overviewRow(safeName(c.name), this.tabs.get(safeName(c.name)), c.name));
+    const rows = this.clients.filter((c) => this.tabs.has(safeName(c.name))).map((c) => overviewRow(safeName(c.name), this.tabs.get(safeName(c.name)), c.name, /^\d{4}-\d{2}-\d{2}$/.test(c.amcExpiry || '') ? c.amcExpiry : ''));
     await this.api('POST', '/values:batchUpdate', { valueInputOption: 'USER_ENTERED', data: [
       { range: `${q(OVERVIEW_TAB)}!A1:B1`, values: [[logoCell(this.logoUrl), OVERVIEW_TITLE]] },
       { range: `${q(OVERVIEW_TAB)}!A2`, values: [[overviewSubline]] },

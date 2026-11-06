@@ -25,7 +25,7 @@ const app = createApp(cfg);
 const visit = createVisitSender(app.direct, cfg);
 await visit({ client: 'c01', back: 1, inverters: 2 });                                                       // complete, all ON
 await visit({ client: 'c02', back: 1, inverters: 4, photos: { Challan: 0, Inverter3: 0 }, sign: { customer: 'No' }, overall: 'Partly completed' });   // missing boxes and a signature
-await visit({ client: 'c02', back: 0, inverters: 4, off: ['MCB', 'Internet'], na: ['SPD'], location: 'gallery', defects: 'Yes', details: 'Two panels cracked on the east side. MCB tripped on string 3.' });
+await visit({ client: 'c02', back: 0, inverters: 4, off: ['ACDB', 'Internet'], na: ['DCSPD'], location: 'gallery', defects: 'Yes', details: 'Two panels cracked on the east side. MCB tripped on string 3.' });
 const left = await app.direct.retryPending();
 console.log(left.left ? `${left.left} row(s) could not be written yet; they stay queued in ${dir}.` : '3 visits written.');
 console.log(`Open: https://docs.google.com/spreadsheets/d/${cfg.sheetId}`);

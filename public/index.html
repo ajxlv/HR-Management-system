@@ -66,8 +66,22 @@
       <textarea id="details" rows="3" placeholder="Write the problem here (if any)"></textarea>
     </section>
 
+    <section class="card" data-id="sig">
+      <h2><span class="n">7</span>Client signature</h2>
+      <div class="sigwrap">
+        <canvas id="sigpad" aria-label="Client signature, draw with your finger"></canvas>
+        <div class="sigcorner" id="sigcorner"></div>
+        <div class="sigempty" id="sigempty">Client signs here</div>
+      </div>
+      <div class="sigbar"><span id="sigstamp" class="sigstamp"></span><button id="sigclear" class="ghost small" type="button" hidden>Clear and sign again</button></div>
+      <div id="amc" class="amc" hidden></div>
+      <label class="signa"><input id="signa" type="checkbox"> Client is not available to sign</label>
+      <div id="sigreasonwrap" hidden><input id="sigreason" type="text" maxlength="200" placeholder="Why could the client not sign?" aria-label="Why the client could not sign"></div>
+    </section>
+
     <p id="msg" class="msg" role="alert"></p>
     <button id="submit" class="primary">SUBMIT</button>
+    <p id="ver" class="ver"></p>
   </main>
 
   <div id="viewer" class="viewer" hidden role="dialog" aria-label="Photo">

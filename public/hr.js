@@ -9,7 +9,9 @@ const kind = {
   notCompleted: (v) => v.notCompleted,
   defects: (v) => v.defects === 'Yes',
   flags,
-  ok: (v) => !v.missing.length && !v.off.length && !v.noSignature.length && !v.notDone.length && !v.notCompleted && v.defects === 'No' && !flags(v),
+  clientSign: (v) => v.clientSign !== 'signed',
+  amc: (v) => v.amc && (v.amc.state === 'soon' || v.amc.state === 'expired'),
+  ok: (v) => !v.missing.length && !v.off.length && !v.noSignature.length && !v.notDone.length && !v.notCompleted && v.defects === 'No' && !flags(v) && v.clientSign === 'signed',
 };
 
 async function load() {
@@ -39,6 +41,8 @@ function render() {
     stat('Any item OFF', V.filter(kind.off).length, 'bad', 'off'),
     stat('Not completed', V.filter(kind.notCompleted).length, 'bad', 'notCompleted'),
     stat('Defects reported', V.filter(kind.defects).length, 'bad', 'defects'),
+    stat('No client signature', V.filter(kind.clientSign).length, 'warn', 'clientSign'),
+    stat('AMC ending / ended', V.filter(kind.amc).length, 'warn', 'amc'),
     stat('Needs a check', V.filter(kind.flags).length, 'warn', 'flags'),
     stat('All good', V.filter(kind.ok).length, 'good', 'ok'),
   );
@@ -55,6 +59,8 @@ function card(v) {
     v.off.length ? chip('OFF: ' + v.off.join(', '), 'bad') : '',
     v.noSignature.length ? chip('No signature', 'bad') : '',
     v.overall && v.notCompleted ? chip(v.overall, v.overall === 'Not completed' ? 'bad' : 'warn') : '',
+    v.clientSign === 'unavailable' ? chip('Client did not sign', 'warn') : v.clientSign !== 'signed' ? chip('No client signature', 'bad') : chip('Client signed', 'good'),
+    v.amc?.state === 'expired' ? chip('AMC ended', 'bad') : v.amc?.state === 'soon' ? chip(`AMC ends in ${v.amc.days} days`, 'warn') : '',
     v.defects === 'Yes' ? chip('Defects', 'bad') : '',
     flags(v) ? chip('Check', 'warn') : '',
     v.sheetPending ? chip('Sheet row waiting', 'warn') : '',
@@ -81,6 +87,8 @@ function detail(v) {
   if (v.off.length) d.append(h('Equipment OFF'), p(v.off.join(', ')));
   if (v.noSignature.length) d.append(h('Missing signatures'), p(v.noSignature.join(', ')));
   if (v.notDone.length) d.append(h('Work not done'), p(v.notDone.join(', ')));
+  d.append(h('Client signature'), p({ signed: 'Signed', 'image missing': 'Signed, but the picture is missing', unavailable: 'Client was not available', none: 'Not taken' }[v.clientSign] || 'Not taken'));
+  if (v.amcExpiry) d.append(h('AMC expiry'), p(v.amcExpiry));
   if (v.checks && v.checks !== 'OK') d.append(h('Needs a check'), p(v.checks));
   d.append(h('Folder in OneDrive'), p(v.folder, 'path'));
   d.append(h(`Photos (${v.photos.length})`));

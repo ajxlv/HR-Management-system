@@ -8,11 +8,11 @@ Screenshots of every step are in `docs/screens/`.
 2. **Cleaner's phone (2 min).**
    - Open the app. Enter PIN. Big text, one screen.
    - Pick client. Date is today. Take Before (twice), After, Bill. Tap YES for defects and type a note.
-   - Choose a client. The form starts with one Inverter box: press "+ Add another inverter" for each extra one. Press SUBMIT with things missing: a red list at the top says exactly what, and the page scrolls to the first one.
+   - Choose a client. The form starts with one Inverter box: tap the dashed "+ Add inverter" box for each extra one (only Inverter 1 is compulsory). Press SUBMIT with things missing: a red list at the top says exactly what, and the page scrolls to the first one.
    - Add photos from the camera and from the gallery. Tap a photo to see its location badge. Press "Set all to normal", then change one item to OFF.
    - Point out the stamp on each photo: client, box, time, GPS.
 3. **HR dashboard (2 min).**
-   - The new visit is at the top: yellow "Missing: Inverter 5", red "OFF: MCB", red "No signature".
+   - The new visit is at the top: yellow "Missing: Inverter 5", red "OFF: ACDB, Internet", a yellow "Client did not sign" or red "No client signature".
    - Click the red "Defects reported" tile: only visits with problems.
    - Open a visit: defect note, OneDrive folder path, photos. Click a photo to enlarge.
    - Click "Download Excel": one tab per client, colour-coded.
