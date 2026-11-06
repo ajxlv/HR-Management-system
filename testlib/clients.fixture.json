@@ -1,8 +1,8 @@
 [
-  { "id": "c01", "name": "Sharma Residence",      "folder": "Sharma Residence",      "lat": 19.9975, "lng": 73.7898 },
-  { "id": "c02", "name": "Patil Agro Industries", "folder": "Patil Agro Industries", "lat": 20.0110, "lng": 73.7620 },
-  { "id": "c03", "name": "Deshmukh Hospital",     "folder": "Deshmukh Hospital",     "lat": 19.9615, "lng": 73.7670 },
-  { "id": "c04", "name": "Gokhale Apartments",    "folder": "Gokhale Apartments",    "lat": 20.0059, "lng": 73.7910 },
-  { "id": "c05", "name": "Nashik Textile Mills",  "folder": "Nashik Textile Mills",  "lat": 19.9420, "lng": 73.8300 },
-  { "id": "c06", "name": "Jadhav Farm House",     "folder": "Jadhav Farm House" }
+  {"id": "c01", "name": "Sharma Residence", "folder": "Sharma Residence", "lat": 19.9975, "lng": 73.7898, "installed": "2024-10-01", "amcExpiry": "2027-09-30"},
+  {"id": "c02", "name": "Patil Agro Industries", "folder": "Patil Agro Industries", "lat": 20.011, "lng": 73.762, "installed": "2023-12-16", "amcExpiry": "2026-12-15"},
+  {"id": "c03", "name": "Deshmukh Hospital", "folder": "Deshmukh Hospital", "lat": 19.9615, "lng": 73.767, "installed": "2022-09-01", "amcExpiry": "2026-09-30"},
+  {"id": "c04", "name": "Gokhale Apartments", "folder": "Gokhale Apartments", "lat": 20.0059, "lng": 73.791, "installed": "2025-03-01", "amcExpiry": "2027-02-28"},
+  {"id": "c05", "name": "Nashik Textile Mills", "folder": "Nashik Textile Mills", "lat": 19.942, "lng": 73.83},
+  {"id": "c06", "name": "Jadhav Farm House", "folder": "Jadhav Farm House"}
 ]

@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HEADERS, boxesFor, isBoxKey, declaredInverters, clampInverters, formConfig, validateAnswers, buildRow, attention, locationSourceFrom, photoCount, missingPhotos, colIndex } from './form.js';
+import { HEADERS, boxesFor, isBoxKey, declaredInverters, clampInverters, formConfig, validateAnswers, validateSignature, amcStatus, AMC_REMIND_DAYS, buildRow, attention, locationSourceFrom, photoCount, missingPhotos, colIndex } from './form.js';
+import { findVendor } from './vendors.js';
+import { VERSION } from './version.js';
 import { State } from './state.js';
 import { LocalStorage, httpError } from './storage/local.js';
 import { OneDriveStorage } from './storage/onedrive.js';
@@ -28,24 +30,30 @@ export function createApp(cfg, deps = {}) {
   const clientById = new Map(cfg.clients.map((c) => [c.id, c]));
   const fails = new Map(); // ip -> [timestamps] for PIN rate limit
 
-  // ---- login ----
-  const sign = (exp) => crypto.createHmac('sha256', secret).update(String(exp)).digest('hex');
-  const makeToken = () => { const exp = now() + 30 * 86400000; return `${exp}.${sign(exp)}`; };
+  // ---- login: each vendor has their own PIN, and the token says which vendor it belongs to ----
+  const sign = (text) => crypto.createHmac('sha256', secret).update(text).digest('hex');
+  const makeToken = (vendor) => { const exp = now() + 30 * 86400000, who = Buffer.from(vendor.name).toString('base64url'); return `${exp}.${who}.${sign(`${exp}.${vendor.name}`)}`; };
+  const open = { name: cfg.cleanerName };                          // used only when no PIN is configured at all (testing)
+  // Returns the vendor this request belongs to, or null. A vendor removed from the settings stops working at once.
   function authed(req) {
-    if (!cfg.cleanerPin) return true;
+    if (!cfg.vendors.length) return open;
     const t = (req.headers.authorization || '').replace(/^Bearer /, '');
-    const [exp, mac] = t.split('.');
-    if (!exp || !mac || +exp < now()) return false;
-    const good = sign(exp);
-    return mac.length === good.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good));
+    const [exp, who, mac] = t.split('.');
+    if (!exp || !who || !mac || +exp < now()) return null;
+    let name;
+    try { name = Buffer.from(who, 'base64url').toString(); } catch { return null; }
+    const vendor = cfg.vendors.find((v) => v.name === name);
+    if (!vendor) return null;
+    const good = sign(`${exp}.${name}`);
+    return mac.length === good.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good)) ? vendor : null;
   }
   function checkPin(ip, pin) {
     const recent = (fails.get(ip) || []).filter((t) => t > now() - 60000);
     if (recent.length >= 5) throw httpError(429, 'Too many tries. Wait one minute.');
-    const a = Buffer.from(String(pin)), b = Buffer.from(cfg.cleanerPin);
-    const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
-    if (!ok) { recent.push(now()); fails.set(ip, recent); throw httpError(401, 'Wrong PIN'); }
+    const vendor = findVendor(cfg.vendors, pin);
+    if (!vendor) { recent.push(now()); fails.set(ip, recent); throw httpError(401, 'Wrong PIN'); }
     fails.delete(ip);
+    return vendor;
   }
 
   // ---- validation ----
@@ -62,10 +70,12 @@ export function createApp(cfg, deps = {}) {
   const validId = (id) => /^[A-Za-z0-9-]{8,64}$/.test(id || '');
 
   // ---- handlers ----
-  function config() {
+  const dateOrEmpty = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : undefined);
+  function config(vendor) {
     return {
-      cleanerName: cfg.cleanerName, maxDaysBack: cfg.maxDaysBack, today: istDate(now()), form: formConfig(),
-      clients: cfg.clients.map((c) => ({ id: c.id, name: c.name })),
+      cleanerName: vendor.name, maxDaysBack: cfg.maxDaysBack, today: istDate(now()), form: formConfig(), version: VERSION, amcRemindDays: AMC_REMIND_DAYS,
+      // Only the name, and the AMC dates the company typed in (for the reminder shown to the client after he signs)
+      clients: cfg.clients.map((c) => ({ id: c.id, name: c.name, installed: dateOrEmpty(c.installed), amcExpiry: dateOrEmpty(c.amcExpiry) })),
     };
   }
 
@@ -75,7 +85,8 @@ export function createApp(cfg, deps = {}) {
     if (!buffer.length || buffer[0] !== 0xff || buffer[1] !== 0xd8) throw httpError(400, 'Not a JPEG photo');
     if (buffer.length > cfg.maxPhotoBytes) throw httpError(413, 'Photo too large');
     const capture = q.cap === undefined || q.cap === '' ? 'camera' : q.cap;
-    if (capture !== 'camera' && capture !== 'gallery') throw httpError(400, 'Bad photo source');
+    if (!['camera', 'gallery', 'drawn'].includes(capture)) throw httpError(400, 'Bad photo source');
+    if ((capture === 'drawn') !== (q.box === 'Signature')) throw httpError(400, 'Only the signature box takes a drawn picture');
     if (q.src !== undefined && q.src !== '' && !['exif', 'phone', 'none'].includes(q.src)) throw httpError(400, 'Bad location source');
     const takenSource = q.tsrc === undefined ? (q.taken ? 'camera' : '') : q.tsrc;
     if (!['', 'exif', 'camera'].includes(takenSource)) throw httpError(400, 'Bad time source');
@@ -102,11 +113,12 @@ export function createApp(cfg, deps = {}) {
     });
   }
 
-  function submitVisit(b) {
+  function submitVisit(b, vendorName) {
     const c = validateCommon(b);
     if (!validId(b.visit)) throw httpError(400, 'Bad visit id');
     if (b.defects !== 'Yes' && b.defects !== 'No') throw httpError(400, 'Defects answer is required');
     const answers = validateAnswers(b.answers);
+    const signature = validateSignature(b.signature);
     if (b.inverters !== undefined && clampInverters(b.inverters) === null) throw httpError(400, 'Bad inverter count');
     const details = String(b.details || '').trim().slice(0, 1000);
     return mutex.run(async () => {
@@ -114,7 +126,8 @@ export function createApp(cfg, deps = {}) {
       if (v?.submitted) return { ok: true, duplicate: true };
       if (v && (v.client !== b.client || v.date !== b.date)) throw httpError(409, 'Visit does not match its photos');
       v = v || state.create(b.visit, { client: b.client, date: b.date });
-      v.cleaner = cfg.cleanerName;
+      v.cleaner = vendorName || cfg.cleanerName;          // the vendor who signed in
+      v.signature = signature;                            // the client's signature record (the picture is a photo in box Signature)
       const inverters = declaredInverters(v, b.inverters), boxes = boxesFor(inverters), defects = details ? 'Yes' : b.defects;
       v.inverters = inverters;
       const row = buildRow({ visit: v, client: c, boxes, answers, defects, details, submittedAt: istDateTime(now()), rootFolder: cfg.rootFolder, gpsMaxDistanceM: cfg.gpsMaxDistanceM });
@@ -207,6 +220,7 @@ export function createApp(cfg, deps = {}) {
           counts: sub.counts, defects: sub.defects, details: sub.details, overall: sub.answers?.overall || '', inverters: sub.inverters ?? declaredInverters(v),
           checks: sub.checks ?? sub.row[colIndex('checks')], folder: sub.row[colIndex('folder')], at: sub.at, sheetPending: sub.sheetDone === false,
           ...attention(v, boxes, sub.answers || { electrical: {}, signatures: {}, work: {}, overall: 'Completed' }),
+          amc: amcStatus(c, istDate(now())), amcExpiry: dateOrEmpty(c?.amcExpiry) || '',
           photos: Object.entries(v.photos).map(([hash, ph]) => ({ hash, box: ph.box, name: ph.name, location: ph.locationSource || '' })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
         };
       }).sort((a, b) => b.at - a.at);
@@ -236,21 +250,22 @@ export function createApp(cfg, deps = {}) {
       if (p.startsWith('/api/hr/')) return await hrApi(req, res, p, url);
       if (!p.startsWith('/api/')) return await serveStatic(req, res, p);
 
-      if (p === '/api/health') return send(res, 200, { ok: true });
+      if (p === '/api/health') return send(res, 200, { ok: true, ...VERSION });
       if (p === '/api/login' && req.method === 'POST') {
         const { pin } = JSON.parse((await body(req, 2000)).toString() || '{}');
-        if (cfg.cleanerPin) checkPin(String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown', pin);
-        return send(res, 200, { token: makeToken() });
+        const vendor = cfg.vendors.length ? checkPin(String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown', pin) : open;
+        return send(res, 200, { token: makeToken(vendor), name: vendor.name });
       }
-      if (!authed(req)) return send(res, 401, { error: 'Please sign in' });
+      const who = authed(req);
+      if (!who) return send(res, 401, { error: 'Please sign in' });
 
-      if (p === '/api/config' && req.method === 'GET') return send(res, 200, config());
+      if (p === '/api/config' && req.method === 'GET') return send(res, 200, config(who));
       if (p === '/api/photo' && req.method === 'POST') {
         const q = Object.fromEntries(url.searchParams);
         return send(res, 200, await savePhoto(q, await body(req, cfg.maxPhotoBytes + 1024)));
       }
       if (p === '/api/visit' && req.method === 'POST') {
-        return send(res, 200, await submitVisit(JSON.parse((await body(req, 20000)).toString() || '{}')));
+        return send(res, 200, await submitVisit(JSON.parse((await body(req, 20000)).toString() || '{}'), who.name));
       }
       send(res, 404, { error: 'Not found' });
     } catch (e) {

@@ -15,8 +15,8 @@ const T = {
   chooseClientFirst: 'Choose the client to see the photo boxes.',
   needTitle: (n) => `Please finish ${n} thing${n === 1 ? '' : 's'} before sending:`,
   camera: 'Tap to take photo', gallery: 'From gallery',
-  inverterHint: 'One box for each inverter at this site. Press + if there are more.',
-  addInverter: 'Add another inverter',
+  inverterHint: 'Inverter 1 is compulsory. Tap the dashed + box to add another inverter, only if the site has one.',
+  addInverter: 'Add inverter',
   removeInverter: (n) => `Remove Inverter ${n}`,
   removeInverterPhotos: (n) => `Inverter ${n} has photos. Remove it and its photos?`,
   allNormal: 'Everything set to normal. Check each line, and change anything that is not normal.',
@@ -29,6 +29,10 @@ const ICON = {
 };
 const iconFor = (box) => (box.inverter ? ICON.inverter : box.group === 'Paperwork' ? ICON.paper : ICON.camera);
 const MAX_SIDE = 1600;
+const CLIENT_SIGN = {
+  need: 'Get the client to sign, or tick "Client is not available"',
+  reason: 'Write why the client could not sign (a few words)',
+};
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -40,15 +44,15 @@ let token = load('token') || '';
 // make sure the service worker also knows the token (older installs only had it in localStorage)
 if (token) window.WRSQueue.setMeta('token', token).catch(() => {});
 // Everything the cleaner has entered so far
-const form = { photos: {}, inverters: 1, e: {}, s: {}, w: {}, overall: null, defects: null };
-const resetForm = () => Object.assign(form, { photos: {}, inverters: 1, e: {}, s: {}, w: {}, overall: null, defects: null });
+const form = { photos: {}, inverters: 1, e: {}, s: {}, w: {}, overall: null, defects: null, sig: null };
+const resetForm = () => Object.assign(form, { photos: {}, inverters: 1, e: {}, s: {}, w: {}, overall: null, defects: null, sig: null });
 const currentClient = () => cfg?.clients.find((c) => c.id === $('client').value) || null;
 // The boxes of this visit: the fixed ones plus one Inverter box per inverter the cleaner has added (the client has no inverter data)
 function currentBoxes() {
   const out = [];
   for (const b of cfg.form.boxes) {
     if (!b.inverter) out.push(b);
-    else if (b.key === 'Inverter1') for (let i = 1; i <= form.inverters; i++) out.push({ ...b, key: `Inverter${i}`, label: `INVERTER ${i}` });
+    else if (b.key === 'Inverter1') for (let i = 1; i <= form.inverters; i++) out.push({ ...b, key: `Inverter${i}`, label: `INVERTER ${i}`, required: i === 1, hint: i === 1 ? b.hint : 'Only if there is one' });   // only Inverter 1 is compulsory
   }
   return out;
 }
@@ -179,26 +183,29 @@ function renderPhotos() {
     const wrap = el('div', 'pgroup'); wrap.append(el('h3', '', g.name));
     const tiles = el('div', 'tiles'); wrap.append(tiles);
     for (const box of g.boxes) tiles.append(tile(box));
-    if (g.name === 'Inverters') wrap.append(el('p', 'hint', T.inverterHint), inverterControls());
+    if (g.name === 'Inverters') { if (form.inverters < cfg.form.maxInverters) tiles.append(addInverterTile()); wrap.append(el('p', 'hint', T.inverterHint)); if (form.inverters > 1) wrap.append(removeInverterButton()); }
     return wrap;
   }));
 }
 
-function inverterControls() {
+// A dashed box in the grid, next to the inverter photo boxes, so it is obvious that more can be added
+function addInverterTile() {
+  const t = el('button', 'tile addtile'); t.type = 'button'; t.dataset.id = 'addinv';
+  t.setAttribute('aria-label', T.addInverter);
+  t.innerHTML = `<span class="plus">+</span><span class="lbl">${T.addInverter.toUpperCase()}</span><span class="cnt">Inverter ${form.inverters + 1}</span>`;
+  t.onclick = () => { form.inverters += 1; renderPhotos(); refreshMissing(); };
+  return t;
+}
+function removeInverterButton() {
   const row = el('div', 'invctl');
-  const add = el('button', 'invbtn', `+ ${T.addInverter}`); add.type = 'button'; add.disabled = form.inverters >= cfg.form.maxInverters;
-  add.onclick = () => { form.inverters += 1; renderPhotos(); refreshMissing(); };
-  row.append(add);
-  if (form.inverters > 1) {
-    const last = `Inverter${form.inverters}`, rm = el('button', 'invbtn rm', `− ${T.removeInverter(form.inverters)}`); rm.type = 'button';
-    rm.onclick = () => {
-      const photos = form.photos[last] || [];
-      if (photos.length && !confirm(T.removeInverterPhotos(form.inverters))) return;
-      photos.forEach((p) => URL.revokeObjectURL(p.url)); delete form.photos[last];
-      form.inverters -= 1; renderPhotos(); refreshMissing();
-    };
-    row.append(rm);
-  }
+  const last = `Inverter${form.inverters}`, rm = el('button', 'invbtn rm', `− ${T.removeInverter(form.inverters)}`); rm.type = 'button';
+  rm.onclick = () => {
+    const photos = form.photos[last] || [];
+    if (photos.length && !confirm(T.removeInverterPhotos(form.inverters))) return;
+    photos.forEach((p) => URL.revokeObjectURL(p.url)); delete form.photos[last];
+    form.inverters -= 1; renderPhotos(); refreshMissing();
+  };
+  row.append(rm);
   return row;
 }
 
@@ -252,11 +259,12 @@ $('viewer').onclick = (e) => { if (e.target === $('viewer')) closeViewer(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeViewer(); });
 
 // ---------- checklist ----------
-const CLASS = { ON: 'good', OFF: 'bad', 'N/A': 'na', Yes: 'good', No: 'bad', Completed: 'good', 'Partly completed': 'warn', 'Not completed': 'bad' };
+const CLASS = { ON: 'good', BLUE: 'blue', OFF: 'bad', 'N/A': 'na', Yes: 'good', No: 'bad', Completed: 'good', 'Partly completed': 'warn', 'Not completed': 'bad' };
 const paints = [];   // functions that redraw the selected buttons
 
 function choice(store, key, options, cols) {
   const wrap = el('div', `opts ${cols}`), btns = [];
+  if (cols === 'three' && options.length !== 3) wrap.className = 'opts two';
   for (const o of options) {
     const b = el('button', '', o); b.type = 'button';
     b.onclick = () => { store[key] = o; paint(); refreshMissing(); };
@@ -270,9 +278,9 @@ const paint = () => paints.forEach((f) => f());
 function buildChecklist() {
   paints.length = 0;
   const f = cfg.form, host = $('checklist'); host.replaceChildren();
-  const row = (id, label, widget) => { const r = el('div', 'crow'); r.dataset.id = id; r.append(el('div', 'q', label), widget); host.append(r); };
+  const row = (id, label, widget, note) => { const r = el('div', 'crow'); r.dataset.id = id; r.append(el('div', 'q', label)); if (note) r.append(el('div', 'note', note)); r.append(widget); host.append(r); };
   host.append(el('div', 'cgroup', 'Electrical equipment'));
-  for (const e of f.electrical) row(`e:${e.key}`, e.label, choice(form.e, e.key, f.electricalOptions, 'three'));
+  for (const e of f.electrical) row(`e:${e.key}`, e.label, choice(form.e, e.key, e.options, 'three'), e.note);
   host.append(el('div', 'cgroup', 'Signatures on the paper challan'));
   for (const s of f.signatures) row(`s:${s.key}`, s.label, choice(form.s, s.key, f.yesNo, 'two'));
   host.append(el('div', 'cgroup', 'Work done'));
@@ -283,11 +291,67 @@ function buildChecklist() {
 }
 
 $('allNormal').onclick = () => {
-  for (const e of cfg.form.electrical) form.e[e.key] = 'ON';
+  for (const e of cfg.form.electrical) form.e[e.key] = e.options[0];     // the first option is the normal state (ON, or BLUE for the internet)
   for (const s of cfg.form.signatures) form.s[s.key] = 'Yes';
   for (const w of cfg.form.work) form.w[w.key] = 'Yes';
   paint(); refreshMissing(); say(T.allNormal, 'ok');
 };
+
+// ---------- the client's signature (drawn with a finger) ----------
+const pad2 = () => $('sigpad');
+let drawing = false, strokes = 0;
+function padCtx() { const c = pad2(), g = c.getContext('2d'); g.lineWidth = 3.2; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#0b2a40'; return g; }
+function padPoint(e) { const r = pad2().getBoundingClientRect(); return [(e.clientX - r.left) * pad2().width / r.width, (e.clientY - r.top) * pad2().height / r.height]; }
+function clearPad() {
+  const c = pad2(), g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); strokes = 0;
+  if (form.sig?.status === 'signed') form.sig = null;
+  $('sigstamp').textContent = ''; $('sigclear').hidden = true; $('sigempty').hidden = false; refreshMissing();
+}
+function sigPadInit() {
+  const c = pad2();
+  c.width = 900; c.height = 380;
+  const g0 = c.getContext('2d'); g0.fillStyle = '#fff'; g0.fillRect(0, 0, c.width, c.height);
+  c.onpointerdown = (e) => { if (form.sig?.status === 'unavailable') return; e.preventDefault(); c.setPointerCapture(e.pointerId); drawing = true; const g = padCtx(), [x, y] = padPoint(e); g.beginPath(); g.moveTo(x, y); g.lineTo(x + 0.1, y + 0.1); g.stroke(); };
+  c.onpointermove = (e) => { if (!drawing) return; e.preventDefault(); const g = padCtx(), [x, y] = padPoint(e); g.lineTo(x, y); g.stroke(); g.beginPath(); g.moveTo(x, y); };
+  const end = () => {
+    if (!drawing) return; drawing = false; strokes += 1;
+    form.sig = { status: 'signed', signedAt: Date.now() };         // the time the client finished signing
+    $('sigstamp').textContent = `Signed ${istStamp(form.sig.signedAt)}`; $('sigclear').hidden = false; $('sigempty').hidden = true; refreshMissing();
+  };
+  c.onpointerup = end; c.onpointercancel = end;
+  $('sigclear').onclick = clearPad;
+  $('signa').onchange = () => {
+    const na = $('signa').checked;
+    $('sigreasonwrap').hidden = !na; c.classList.toggle('off', na); $('sigcorner').hidden = na;
+    if (na) { clearPad(); form.sig = { status: 'unavailable', reason: $('sigreason').value }; } else form.sig = null;
+    refreshMissing();
+  };
+  $('sigreason').oninput = () => { if (form.sig?.status === 'unavailable') { form.sig.reason = $('sigreason').value; refreshMissing(); } };
+}
+// The picture that is filed: the signature, the client name in the corner and the signing date and time
+function signatureBlob(name, at) {
+  const src = pad2(), c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  g.fillStyle = '#0b3a5c'; g.textBaseline = 'top'; g.font = '700 30px sans-serif'; g.fillText(name, 18, 14, c.width - 36);
+  g.fillStyle = '#5b6b78'; g.font = '600 24px sans-serif'; g.textBaseline = 'bottom'; g.fillText(`Signed ${istStamp(at)}`, 18, c.height - 12);
+  return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+}
+const dmy = (d) => d.split('-').reverse().join('-');
+// The company types in each client's AMC dates; the reminder is shown right after the client has signed
+function showSigClient() {
+  const client = currentClient();
+  $('sigcorner').textContent = client ? client.name : '';
+  const box = $('amc'); box.className = 'amc'; box.hidden = true;
+  if (!client || !client.amcExpiry) return;
+  const days = Math.round((Date.parse(client.amcExpiry) - Date.parse(cfg.today)) / 86400000);
+  const state = days < 0 ? 'expired' : days <= (cfg.amcRemindDays || 60) ? 'soon' : 'ok';
+  const left = days < 0 ? `ended ${-days} day${days === -1 ? '' : 's'} ago` : days === 0 ? 'ends today' : `${days} day${days === 1 ? '' : 's'} left`;
+  box.className = `amc ${state}`;
+  box.textContent = state === 'ok'
+    ? `AMC valid until ${dmy(client.amcExpiry)} (${left}).`
+    : `${state === 'expired' ? 'AMC EXPIRED' : 'AMC ending soon'}: ${dmy(client.amcExpiry)} (${left}). Please remind the client to renew.`;
+  box.hidden = false;
+}
 
 // ---------- defects ----------
 function setDefects(v) { form.defects = v; $('no').classList.toggle('on', v === 'No'); $('yes').classList.toggle('on', v === 'Yes'); refreshMissing(); }
@@ -300,10 +364,12 @@ function missingItems() {
   const client = currentClient(), out = [];
   if (!client) return [{ id: 'client', text: 'Choose the client' }];
   for (const b of currentBoxes()) if (b.required && !(form.photos[b.key] || []).length) out.push({ id: `box:${b.key}`, text: `Add a photo: ${b.label[0] + b.label.slice(1).toLowerCase()}` });
-  for (const e of cfg.form.electrical) if (!form.e[e.key]) out.push({ id: `e:${e.key}`, text: `Choose ON, OFF or N/A: ${e.label}` });
+  for (const e of cfg.form.electrical) if (!form.e[e.key]) out.push({ id: `e:${e.key}`, text: `Choose ${e.options.join(', ')}: ${e.label}` });
   for (const s of cfg.form.signatures) if (!form.s[s.key]) out.push({ id: `s:${s.key}`, text: `Answer Yes or No: ${s.label}` });
   for (const w of cfg.form.work) if (!form.w[w.key]) out.push({ id: `w:${w.key}`, text: `Answer Yes or No: ${w.label}` });
   if (!form.overall) out.push({ id: 'overall', text: 'Choose the overall status' });
+  if (!form.sig) out.push({ id: 'sig', text: CLIENT_SIGN.need });
+  else if (form.sig.status === 'unavailable' && form.sig.reason.trim().length < 3) out.push({ id: 'sig', text: CLIENT_SIGN.reason });
   if (!form.defects) out.push({ id: 'defects', text: 'Defects: press NO or YES' });
   return out;
 }
@@ -330,7 +396,7 @@ $('client').onchange = () => {
   const had = Object.values(form.photos).some((l) => l.length);
   if (had && !confirm(T.clearPhotos)) { $('client').value = prevClient; return; }
   Object.values(form.photos).flat().forEach((p) => URL.revokeObjectURL(p.url));
-  form.photos = {}; form.inverters = 1; prevClient = $('client').value; say('', '');
+  form.photos = {}; form.inverters = 1; prevClient = $('client').value; say('', ''); showSigClient();
   renderPhotos(); refreshMissing();
 };
 
@@ -344,6 +410,11 @@ $('submit').onclick = async () => {
   if (!date) { say('Please choose the date.', 'err'); return; }
   $('submit').disabled = true;
   const visit = crypto.randomUUID(), items = [];
+  let signature;
+  if (form.sig.status === 'signed') {
+    signature = { status: 'signed', signedAt: form.sig.signedAt };
+    items.push({ type: 'photo', blob: await signatureBlob(client.name, form.sig.signedAt), params: { visit, client: client.id, date, box: 'Signature', cap: 'drawn', src: 'none', tsrc: '', taken: form.sig.signedAt } });
+  } else signature = { status: 'unavailable', reason: form.sig.reason.trim() };
   for (const box of currentBoxes()) for (const p of form.photos[box.key] || []) {
     items.push({
       type: 'photo', blob: p.blob,
@@ -351,7 +422,7 @@ $('submit').onclick = async () => {
         ...(p.taken ? { taken: p.taken } : {}), ...(p.pos ? { lat: p.pos.lat, lng: p.pos.lng, ...(p.pos.acc != null ? { acc: Math.round(p.pos.acc) } : {}) } : {}) },
     });
   }
-  items.push({ type: 'visit', body: { visit, client: client.id, date, inverters: form.inverters, defects: form.defects, details: $('details').value.trim(),
+  items.push({ type: 'visit', body: { visit, client: client.id, date, inverters: form.inverters, defects: form.defects, details: $('details').value.trim(), signature,
     answers: { electrical: { ...form.e }, signatures: { ...form.s }, work: { ...form.w }, overall: form.overall } } });
   try {
     await Q.add(items);                         // saved on the phone first, so nothing is lost
@@ -361,7 +432,8 @@ $('submit').onclick = async () => {
   Object.values(form.photos).flat().forEach((p) => URL.revokeObjectURL(p.url));
   resetForm(); prevClient = '';
   $('details').value = ''; $('client').value = ''; $('date').value = cfg.today;
-  setDefects(null); paint(); renderPhotos(); showMissing([], false);
+  setDefects(null); $('signa').checked = false; $('signa').onchange(); $('sigreason').value = ''; clearPad(); showSigClient();
+  paint(); renderPhotos(); showMissing([], false);
   say(T.saved, 'ok'); $('submit').disabled = false;
   window.scrollTo({ top: 0, behavior: 'smooth' });
   showWaiting(); flush();
@@ -386,13 +458,16 @@ function init(c) {
   cfg = c;
   $('login').hidden = true; $('app').hidden = false;
   $('who').textContent = cfg.cleanerName;
+  if (cfg.version) $('ver').textContent = `Version ${cfg.version.version}${cfg.version.commit ? ' · ' + cfg.version.commit : ''}`;
   $('client').replaceChildren(new Option(T.pickClient, ''), ...cfg.clients.map((x) => new Option(x.name, x.id)));
   const d = $('date'); d.max = cfg.today; d.value = cfg.today;
   const min = new Date(cfg.today + 'T00:00:00Z'); min.setUTCDate(min.getUTCDate() - cfg.maxDaysBack);
   d.min = min.toISOString().slice(0, 10);
   resetForm(); prevClient = '';
-  buildChecklist(); renderPhotos(); showWaiting(); flush();
+  if (!sigReady) { sigPadInit(); sigReady = true; }
+  buildChecklist(); renderPhotos(); showSigClient(); showWaiting(); flush();
 }
+let sigReady = false;
 
 $('pinGo').onclick = async () => {
   const r = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ pin: $('pin').value }) }).catch(() => null);

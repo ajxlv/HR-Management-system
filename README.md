@@ -31,12 +31,14 @@ Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR 
 
 1. vercel.com, **Add New, Project**, import `ajxlv/hr-management-system`.
 2. Framework preset **Other**. Leave Build Command empty. Production branch: `wrs-cleaning-photos` (Settings, Git).
-3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234), `REPORT_KEY` (hr-demo), `SESSION_SECRET`.
+3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234) or `VENDORS` (one PIN per vendor), `REPORT_KEY` (hr-demo), `SESSION_SECRET`. Set `DEMO_CLIENTS=real` to show HR's real client list with **no made-up visits** (the default shows six made-up clients with sample visits). The cleaner's screen shows a small **Version** line at the bottom, and `/api/health` returns the same version, so you can check at once that the newest code is running.
 4. Deploy. Open the link on a phone: camera and GPS work because Vercel gives HTTPS.
 
 ## The client list
 
-The dropdown on the cleaner's phone, the OneDrive folders and the Google Sheet tabs all come from `server/clients.json`. Each client is just `id`, `name`, `folder` (the exact OneDrive folder name, the same as the name) and, only if known, `lat` and `lng`. There is no inverter count and no phone number in it.
+The dropdown on the cleaner's phone, the OneDrive folders and the Google Sheet tabs all come from `server/clients.json`. Each client is just `id`, `name`, `folder` (the exact OneDrive folder name, the same as the name) and, only if known, `lat` and `lng`, `installed` and `amcExpiry`. There is no inverter count and no phone number in it.
+
+**AMC dates.** The company types them in; they are never taken from the contract "start date" / "end date" columns. Add two optional columns to the sheet you import, headed `Installation date` and `AMC expiry`, written like `31-03-2027` (day first), then run `npm run import:clients` again. They appear in the sheet (group **AMC**, amber inside 60 days of expiry, red after), in the Overview tab and on the HR page. On the cleaner's phone, just below the client's signature, a note tells the cleaner the expiry date so the client hears the reminder.
 
 **To load or update the list from HR's Excel or CSV file:**
 
@@ -80,9 +82,9 @@ The tests and the demos use six made-up clients in `testlib/clients.fixture.json
 Everything below is defined in `server/form.js` (labels, boxes, checklist items, sheet columns).
 
 **Photos.** Every box takes several photos, from the camera (big tap) or from the gallery (small button).
-- **Before**, **After**, **Inverter 1 to N**, **Challan** (the signed cleaning receipt), **Bill**. At least one photo in every box.
-- **The cleaner decides how many inverters there are.** The form starts with one Inverter box. The cleaner presses **+ Add another inverter** for each extra one (up to 12) and **Remove** for the last one if he added too many. Every box he adds needs a photo. Clients carry no inverter data. The count travels with the visit, and the sheet shows "3 of 3 uploaded" (or "2 of 3 uploaded", in red, if a photo is missing).
-- Files in the date folder: `Before_1.jpg`, `After_2.jpg`, `Inverter1_1.jpg`, `Inverter2_1.jpg`, `Challan_1.jpg`, `Bill_1.jpg`. A second visit the same day carries on the numbers.
+- **Before**, **After**, **Inverter 1 to N**, **Earthing pit before**, **Earthing pit after**, **Challan** (the signed cleaning receipt), **Bill**. At least one photo in every box except the extra inverters.
+- **Only Inverter 1 is compulsory.** A site may have just one. A dashed **+ Add inverter** box sits next to the inverter boxes; the cleaner taps it for each extra inverter (up to 12) and uses **Remove** for the last one if he added too many. The extra boxes are optional. The sheet shows `Uploaded (3)`, or red `Not uploaded` if even Inverter 1 has no photo.
+- Files in the date folder: `Before_1.jpg`, `After_2.jpg`, `Inverter1_1.jpg`, `EarthingPitBefore_1.jpg`, `EarthingPitAfter_1.jpg`, `Challan_1.jpg`, `Bill_1.jpg`, `Signature_1.jpg`. A second visit the same day carries on the numbers.
 
 **Location (Before and After).** Phones often have camera location tagging off, and gallery photos may have lost theirs, so the app uses, in this order:
 1. the location **inside the photo** (EXIF), with its capture time, if there is one;
@@ -91,12 +93,18 @@ Everything below is defined in `server/form.js` (labels, boxes, checklist items,
 The source is stored per photo as `photo EXIF`, `phone at upload` or `none`, with whether it was a live camera shot or a gallery photo. A location is **verified** when it came from the photo, or from the phone during a live camera shot. A gallery photo with only the phone's location (or none) shows in the sheet's Checks column as "Location not verified" (amber). Distance from the site (300 m) and "taken on a different day" (EXIF date not the visit date) are still checked. There is no "photo must be fresh" rule any more.
 
 **Checklist (all compulsory).**
-- Electrical equipment, each **ON / OFF / N/A**: ACDB, Inverter, DCDB, Internet (the plant's monitoring/data logger being online), MCB, SPD, Earthing Trip. ON is the normal state.
+- Electrical equipment, each **ON / OFF / N/A**: ACDB (the MCB ON / OFF), Inverter, DCDB, AC SPD, DC SPD, Earthing Trip. ON is the normal state. **Internet** (the plant's monitoring/data logger) is **BLUE / OFF / N/A**: BLUE light = connected, shown in blue.
 - Signatures on the paper challan, **Yes / No**: customer, cleaning supervisor.
 - Work done, **Yes / No**: session cleaning completed, solar panels washed with water, inverter room checked, earthing pit checked.
 - "Before photos taken" and "After photos taken" are filled in automatically from the photos.
 - **Overall status**: Completed / Partly completed / Not completed. Then the existing defects Yes/No and note.
-- A **Set all to normal** button fills ON and Yes in one tap (the cleaner still changes anything that is not normal).
+- A **Set all to normal** button fills ON (BLUE for the internet) and Yes in one tap (the cleaner still changes anything that is not normal).
+
+**Client signature.** The last card. The client signs with a finger; the client's name sits in the corner and the date and time are stamped on the picture, which is filed as `Signature_1.jpg`. The sheet column **Client signature** shows `Signed 2026-11-02 13:05`. If the client is not there, the cleaner ticks **Client is not available** and writes a reason (the sheet shows it in amber). A visit with neither cannot be sent.
+
+**Date.** The work date can be today or yesterday only (`MAX_DAYS_BACK=1`).
+
+**Several vendors.** Set `VENDORS=Sandeep=4821;Uttam mama=7733` in the environment. Each vendor signs in with their own PIN, the PIN alone identifies them, and their name is written in the **Cleaner** column. Removing a vendor from the setting stops their phone at once.
 
 **Submit is blocked** until every box has a photo and every question is answered. A list at the top says exactly what is missing, and the page scrolls to the first missing item.
 
@@ -105,7 +113,7 @@ Labels are English only. They are in `server/form.js` and the `T` block at the t
 ## What HR gets
 
 - OneDrive: `Clients/<client folder>/YYYY-MM-DD/` with the files above. Nothing is overwritten.
-- **Google Sheet** (see below): one row per visit with **28 columns**: Visit date, Submitted at (IST), Cleaner, Before, After, Inverters ("4 of 4 uploaded"), Challan, Bill, then the seven electrical items, the two signatures, the four work items, Before and After photos taken, Overall status, Defects, Defect details, Checks, Photo folder. A coloured band above the header groups them: **Photos | Electrical checklist | Signatures | Work done | Result**. ON, Yes and Uploaded are green. OFF, No and Not uploaded are red. N/A is grey. Inverters is red unless every inverter has a photo. Checks is amber unless it says OK.
+- **Google Sheet** (see below): one row per visit with **33 columns**: Visit date, Submitted at (IST), Cleaner, Before, After, Inverters (`Uploaded (3)`), Earthing pit before, Earthing pit after, Challan, Bill, then the seven electrical items, the customer and supervisor signatures, **Client signature**, the four work items, Before and After photos taken, Overall status, Defects, Defect details, Checks, Photo folder, **Installed on**, **AMC expiry**. A coloured band above the header groups them: **Photos | Electrical checklist | Signatures | Work done | Result | AMC**. ON, Yes and Uploaded are green. OFF, No and Not uploaded are red. N/A is grey. BLUE (internet) is blue. Checks is amber unless it says OK.
 - The **Overview** tab adds "Visits with any OFF item" and "Visits not completed".
 - **Dashboard page** at `/hr.html` (needs `REPORT_KEY`): every visit with chips for missing photos, OFF items, missing signatures, not completed, defects and checks, filters, photo thumbnails and the Excel download.
 - Every answer is also kept as structured data in `data/state.json` (not only in the sheet).
@@ -118,7 +126,7 @@ Labels are English only. They are in `server/form.js` and the `T` block at the t
 | Add or change clients | Edit HR's list and run `npm run import:clients -- list.xlsx` (see **The client list** below). The OneDrive folder must exist: the app never creates client folders. |
 | Change the photo boxes or checklist | `server/form.js`. After changing the columns, run `npm run format:sheet` and start new client tabs (see the note under Google Sheet). |
 | Change the words on screen | `T` at the top of `public/app.js`. |
-| Change the cleaner's name / PIN | `CLEANER_NAME`, `CLEANER_PIN` in the environment. |
+| Change who can sign in | `VENDORS` (one PIN per vendor) in the environment. `CLEANER_NAME` and `CLEANER_PIN` still work for a single shared PIN. |
 | Date window, GPS distance | `MAX_DAYS_BACK`, `GPS_MAX_DISTANCE_M`. |
 
 ## Where photos go: two ways to reach company OneDrive
@@ -182,7 +190,7 @@ Colours, columns and widths are all in `server/sheets/layout.js`. After changing
 npm run format:sheet
 ```
 
-**If the sheet already has tabs from the earlier layout** (11 columns, with a Wires column), do not reuse them: the new layout has 28 columns, so old rows would sit under the wrong headers. Rename those tabs (for example add " (old)") or delete them. The app then creates fresh tabs on the next visit. `npm run format:sheet` only re-applies the look of tabs that already use the new columns.
+**If the sheet already has tabs from the earlier layout** (11 columns, with a Wires column), do not reuse them: the new layout has 33 columns, so old rows would sit under the wrong headers. Rename those tabs (for example add " (old)") or delete them. The app then creates fresh tabs on the next visit. `npm run format:sheet` only re-applies the look of tabs that already use the new columns.
 
 The first three columns (date, submitted at, cleaner) are frozen, together with rows 1 to 5. The banner is split around that line because Google Sheets does not allow freezing columns through a merged cell.
 

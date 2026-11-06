@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { parseVendors } from './vendors.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,6 +28,7 @@ export function loadConfig(env = process.env, overrides = {}) {
     secret: env.SESSION_SECRET || '',
     cleanerName: env.CLEANER_NAME || 'Cleaner',
     cleanerPin: env.CLEANER_PIN || '',
+    vendors: parseVendors(env),                              // each vendor signs in with their own PIN
     storage: env.STORAGE || 'local',
     rootFolder: env.ROOT_FOLDER || 'Clients',
     ms: {
@@ -40,7 +42,7 @@ export function loadConfig(env = process.env, overrides = {}) {
     google: env.SHEET === 'google' ? loadGoogleCredentials(env) : {},
     logoUrl: env.LOGO_URL || '',
     sheetRetryMs: num(env.SHEET_RETRY_MS, 60000),
-    maxDaysBack: num(env.MAX_DAYS_BACK, 7),
+    maxDaysBack: num(env.MAX_DAYS_BACK, 1),                 // today and yesterday
     photoMaxAgeSec: num(env.PHOTO_MAX_AGE_SEC, 180),
     gpsMaxDistanceM: num(env.GPS_MAX_DISTANCE_M, 300),
     maxPhotoBytes: 3.8 * 1024 * 1024, // Graph simple upload limit is 4 MB
