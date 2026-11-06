@@ -1,7 +1,7 @@
 // Keeps the app opening with no signal, and sends queued photos in the background (Background Sync).
 // API calls are never cached.
 importScripts('/queue-core.js');
-const CACHE = 'wrs-v7';
+const CACHE = 'wrs-v8';
 const SHELL = ['/', '/style.css', '/app.js', '/queue-core.js', '/exif.js', '/manifest.webmanifest', '/icon-192.png', '/logo.png'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });

@@ -98,7 +98,7 @@ The source is stored per photo as `photo EXIF`, `phone at upload` or `none`, wit
 - Work done, **Yes / No**: session cleaning completed, solar panels washed with water, inverter room checked, earthing pit checked.
 - "Before photos taken" and "After photos taken" are filled in automatically from the photos.
 - **Overall status**: Completed / Partly completed / Not completed. Then the existing defects Yes/No and note.
-- A **Set all to normal** button fills ON (BLUE for the internet) and Yes in one tap (the cleaner still changes anything that is not normal).
+- There is no "set all" shortcut: the cleaner answers every line himself.
 
 **Client signature.** The last card. The client signs with a finger; the client's name sits in the corner and the date and time are stamped on the picture, which is filed as `Signature_1.jpg`. The sheet column **Client signature** shows `Signed 2026-11-02 13:05`. If the client is not there, the cleaner ticks **Client is not available** and writes a reason (the sheet shows it in amber). A visit with neither cannot be sent.
 

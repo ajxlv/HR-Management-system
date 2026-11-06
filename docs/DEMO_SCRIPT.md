@@ -9,7 +9,7 @@ Screenshots of every step are in `docs/screens/`.
    - Open the app. Enter PIN. Big text, one screen.
    - Pick client. Date is today. Take Before (twice), After, Bill. Tap YES for defects and type a note.
    - Choose a client. The form starts with one Inverter box: tap the dashed "+ Add inverter" box for each extra one (only Inverter 1 is compulsory). Press SUBMIT with things missing: a red list at the top says exactly what, and the page scrolls to the first one.
-   - Add photos from the camera and from the gallery. Tap a photo to see its location badge. Press "Set all to normal", then change one item to OFF.
+   - Add photos from the camera and from the gallery. Tap a photo to see its location badge. Answer each checklist line, setting one item to OFF.
    - Point out the stamp on each photo: client, box, time, GPS.
 3. **HR dashboard (2 min).**
    - The new visit is at the top: yellow "Missing: Inverter 5", red "OFF: ACDB, Internet", a yellow "Client did not sign" or red "No client signature".
