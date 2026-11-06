@@ -19,7 +19,6 @@ const T = {
   addInverter: 'Add inverter',
   removeInverter: (n) => `Remove Inverter ${n}`,
   removeInverterPhotos: (n) => `Inverter ${n} has photos. Remove it and its photos?`,
-  allNormal: 'Everything set to normal. Check each line, and change anything that is not normal.',
 };
 const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -290,12 +289,6 @@ function buildChecklist() {
   paint();
 }
 
-$('allNormal').onclick = () => {
-  for (const e of cfg.form.electrical) form.e[e.key] = e.options[0];     // the first option is the normal state (ON, or BLUE for the internet)
-  for (const s of cfg.form.signatures) form.s[s.key] = 'Yes';
-  for (const w of cfg.form.work) form.w[w.key] = 'Yes';
-  paint(); refreshMissing(); say(T.allNormal, 'ok');
-};
 
 // ---------- the client's signature (drawn with a finger) ----------
 const pad2 = () => $('sigpad');
@@ -442,15 +435,21 @@ $('submit').onclick = async () => {
 // ---------- start up ----------
 function showLogin() { $('app').hidden = true; $('login').hidden = false; $('pin').focus(); }
 
+// Saved settings from an older version of the app are missing newer fields, so they must never be used
+const usable = (c) => !!(c && c.form && Array.isArray(c.form.electrical) && c.form.electrical.every((e) => Array.isArray(e.options)) && Array.isArray(c.clients) && typeof c.today === 'string');
+const istToday = () => new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+
 async function start() {
   let r;
   try { r = await fetch('/api/config', { headers: auth() }); }
   catch {
     let c = null; try { c = JSON.parse(load('config')); } catch {}
-    if (c && c.form) return init(c);          // an older saved config has no checklist, so it cannot be used
+    if (usable(c)) { c.today = istToday(); return init(c); }      // no signal: the saved settings, with today's date from the phone clock
+    store('config', undefined);
     return say('No signal. Open the app once with signal.', 'err');
   }
   if (r.status === 401) return showLogin();
+  if (!r.ok) return say('The server could not load the form. Close the app and open it again.', 'err');
   cfg = await r.json(); store('config', JSON.stringify(cfg)); init(cfg);
 }
 
