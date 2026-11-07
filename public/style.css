@@ -167,3 +167,4 @@ select:focus, input:focus, textarea:focus { outline: 3px solid var(--sun); borde
 .amc.soon { background: #fff6e0; border-color: #e0a100; color: #7a5200; }
 .amc.expired { background: #fff1f0; border-color: var(--bad); color: var(--bad); }
 .ver { text-align: center; color: var(--muted); font-size: .75rem; margin: 18px 0 8px; }
+.amc.none { background: #f4f7f4; color: var(--muted); font-weight: 600; font-size: .9rem; }
