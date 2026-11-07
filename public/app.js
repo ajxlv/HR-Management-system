@@ -335,7 +335,8 @@ function showSigClient() {
   const client = currentClient();
   $('sigcorner').textContent = client ? client.name : '';
   const box = $('amc'); box.className = 'amc'; box.hidden = true;
-  if (!client || !client.amcExpiry) return;
+  if (!client) return;
+  if (!client.amcExpiry) { box.className = 'amc none'; box.textContent = 'AMC expiry date not entered yet for this client. HR adds it.'; box.hidden = false; return; }
   const days = Math.round((Date.parse(client.amcExpiry) - Date.parse(cfg.today)) / 86400000);
   const state = days < 0 ? 'expired' : days <= (cfg.amcRemindDays || 60) ? 'soon' : 'ok';
   const left = days < 0 ? `ended ${-days} day${days === -1 ? '' : 's'} ago` : days === 0 ? 'ends today' : `${days} day${days === 1 ? '' : 's'} left`;
