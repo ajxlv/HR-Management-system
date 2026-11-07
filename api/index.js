@@ -10,7 +10,7 @@ import { seedDemo, DEMO_CLIENTS_FILE } from '../server/demo-seed.js';
 const dir = '/tmp/wrs-demo';
 const e = process.env;
 // DEMO_CLIENTS=real: show the real client list (server/clients.json) with no made-up visits. Default: made-up clients and visits.
-const realClients = e.DEMO_CLIENTS === 'real';
+const realClients = /^\W*real\W*$/i.test(String(e.DEMO_CLIENTS || ''));   // tolerant of capitals, spaces and quotes typed in the Vercel box
 const cfg = loadConfig({
   DATA_DIR: dir, SHEET: 'excel', STORAGE: 'local',
   CLEANER_NAME: e.CLEANER_NAME || 'Ramesh', CLEANER_PIN: e.CLEANER_PIN || '1234', ...(e.VENDORS ? { VENDORS: e.VENDORS } : {}),
@@ -35,7 +35,7 @@ const timeout = (ms) => new Promise((r) => setTimeout(() => r('timeout'), ms));
 export default async function handler(req, res) {
   // /api/debug answers before anything else starts, to show what is wrong.
   if (req.url.startsWith('/api/debug')) {
-    return json(res, 200, { node: process.version, url: req.url, host: req.headers.host, started: !!started, seeded, realClients, clients: cfg.clients.length, startError: startError && String(startError.stack || startError) });
+    return json(res, 200, { node: process.version, url: req.url, host: req.headers.host, started: !!started, seeded, realClients, demoClientsSetting: e.DEMO_CLIENTS === undefined ? '(not set)' : JSON.stringify(e.DEMO_CLIENTS), commit: (e.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7), clients: cfg.clients.length, startError: startError && String(startError.stack || startError) });
   }
   if ((await Promise.race([start(), timeout(20000)])) === 'timeout') return json(res, 500, { error: 'Demo start-up took longer than 20 s' });
   if (startError) return json(res, 500, { error: 'Demo failed to start', detail: String(startError.stack || startError) });
