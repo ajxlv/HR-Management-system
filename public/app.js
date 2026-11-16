@@ -9,6 +9,8 @@ const T = {
   siteFailed: (m) => `Could not add the site: ${m}`,
   saved: '✓ Saved. Ready for the next visit.',
   waiting: (n) => `${n} item${n === 1 ? '' : 's'} waiting, will send automatically`,
+  sending: (i, total) => `Sending ${i} of ${total}… keep this screen open until it is done`,
+  allSent: '✓ Everything is sent and saved.',
   waitingOpen: (n) => `${n} item${n === 1 ? '' : 's'} waiting for signal. Keep this app open.`,
   wrongPin: 'Wrong PIN. Try again.',
   rejected: (m) => `One item was refused by the server: ${m}`,
@@ -31,7 +33,7 @@ const ICON = {
   inverter: svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M13 7l-3 5h4l-3 5"/>'),
 };
 const iconFor = (box) => (box.inverter ? ICON.inverter : box.group === 'Paperwork' ? ICON.paper : ICON.camera);
-const MAX_SIDE = 1600;
+const MAX_SIDE = 1280;   // big enough to read, small enough to upload quickly on a phone connection
 const CLIENT_SIGN = {
   need: 'Get the client to sign, or tick "Client is not available"',
   reason: 'Write why the client could not sign (a few words)',
@@ -63,7 +65,8 @@ function currentBoxes() {
 // ---------- queue (shared with the service worker, see queue-core.js) ----------
 const Q = window.WRSQueue;
 const canBackgroundSync = 'serviceWorker' in navigator && 'SyncManager' in window;
-let flushing = false;
+let flushing = false, progress = null;
+Q.onProgress = (p) => { progress = p; showWaiting(); };
 async function flush() {
   if (flushing) return;
   flushing = true;
@@ -72,7 +75,8 @@ async function flush() {
     if (r.stopped === 'auth') showLogin();
     const rejected = await Q.getMeta('rejected');
     if (rejected && rejected.length) { await Q.setMeta('rejected', undefined); say(T.rejected(rejected[0]), 'err'); }
-  } finally { flushing = false; showWaiting(); }
+    else if (r.sent > 0 && r.left === 0) say(T.allSent, 'ok');
+  } finally { flushing = false; progress = null; showWaiting(); }
 }
 // Ask the browser to send later even if the app is closed (Android Chrome). The in-page retry stays as the fallback.
 function askBackgroundSync() {
@@ -84,7 +88,15 @@ const saveToken = (t) => { token = t; store('token', t); Q.setMeta('token', t).c
 async function showWaiting() {
   const n = (await Q.all()).length;
   $('waiting').hidden = !n;
-  $('waiting').textContent = n ? (canBackgroundSync ? T.waiting(n) : T.waitingOpen(n)) : '';
+  const w = $('waiting');
+  if (n && progress) {
+    const done = progress.sent + (progress.sending ? 0.5 : 0), pct = Math.round((done / progress.total) * 100);
+    w.textContent = T.sending(Math.min(progress.sent + 1, progress.total), progress.total);
+    w.style.background = `linear-gradient(90deg, #b9dcf7 ${pct}%, #eaf4fc ${pct}%)`;
+  } else {
+    w.textContent = n ? (canBackgroundSync ? T.waiting(n) : T.waitingOpen(n)) : '';
+    w.style.background = '';
+  }
 }
 
 // ---------- photos ----------
@@ -127,7 +139,7 @@ async function makeJpeg(file, lines) {
     g.fillStyle = '#fff'; g.font = `700 ${fs}px sans-serif`; g.textBaseline = 'top';
     lines.forEach((t, i) => g.fillText(t, p, h - boxH + p + i * fs * 1.25, w - p * 2));
   }
-  for (const q of [0.85, 0.7, 0.55]) {
+  for (const q of [0.78, 0.65, 0.5]) {
     const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', q));
     if (blob.size < 3.5 * 1024 * 1024) return blob;
   }

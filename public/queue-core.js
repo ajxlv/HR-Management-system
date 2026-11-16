@@ -32,15 +32,17 @@
     const token = await getMeta('token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     let sent = 0, stopped = null;
-    for (const item of await all()) {
+    const items = await all(), progress = (extra) => { try { g.WRSQueue.onProgress && g.WRSQueue.onProgress({ sent, total: items.length, ...extra }); } catch {} };
+    for (const item of items) {
       let r;
+      progress({ sending: true });
       try {
         r = item.type === 'photo'
           ? await fetch('/api/photo?' + new URLSearchParams(item.params), { method: 'POST', body: item.blob, headers })
           : await fetch('/api/visit', { method: 'POST', body: JSON.stringify(item.body), headers });
       } catch { stopped = 'offline'; break; }                    // no signal: keep everything
       if (r.status === 401) { stopped = 'auth'; break; }          // needs a new sign-in
-      if (r.ok) { await del(item.seq); sent++; continue; }
+      if (r.ok) { await del(item.seq); sent++; progress({ sending: false }); continue; }
       if (r.status >= 500 || r.status === 429) { stopped = 'server'; break; }
       const e = await r.json().catch(() => ({}));                 // refused for good: drop it, remember why
       await del(item.seq);
@@ -59,5 +61,5 @@
     return r || { sent: 0, stopped: 'busy', left: (await all()).length };
   }
 
-  g.WRSQueue = { all, add, del, getMeta, setMeta, flush };
+  g.WRSQueue = { all, add, del, getMeta, setMeta, flush, onProgress: null };
 })(self);

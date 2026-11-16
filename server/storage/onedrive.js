@@ -74,24 +74,35 @@ export class OneDriveStorage {
     return last;
   }
 
-  async saveFile({ rootFolder, folder, box, buffer }) {
-    const id = await this.ensureFolder(rootFolder, folder);
-    const kids = await this.graph('GET', `${this.drive}/items/${id}/children?$select=name&$top=500`);
-    if (!kids.ok) throw httpError(502, `OneDrive error ${kids.status}`);
-    const re = new RegExp(`^${box}_(\\d+)\\.jpg$`);
-    let n = Math.max(0, ...kids.json.value.map((k) => (k.name.match(re) || [0, 0])[1] * 1)) + 1;
-    for (let tries = 0; tries < 5; tries++, n++) {
-      const name = `${box}_${n}.jpg`;
-      const up = await this.put(id, name, buffer, 'fail', 'image/jpeg');
-      if (up.ok) return { name, path: `${rootFolder}/${folder}/${name}` };
-      if (up.status !== 409) throw httpError(502, `OneDrive upload failed ${up.status}`);
+  // The entry folder's id is remembered, so the next photo of the same entry needs no folder lookup.
+  async folderId(rootFolder, folder) {
+    this.ids ||= new Map();
+    const key = `${rootFolder}/${folder}`;
+    if (!this.ids.has(key)) this.ids.set(key, await this.ensureFolder(rootFolder, folder));
+    return this.ids.get(key);
+  }
+
+  // startAt: the first number to try (the app knows what it saved already). A taken name answers 409 and the next number is tried.
+  async saveFile({ rootFolder, folder, box, buffer, startAt = 1 }) {
+    const key = `${rootFolder}/${folder}`;
+    for (let lookup = 0; lookup < 2; lookup++) {
+      const id = await this.folderId(rootFolder, folder);
+      let removed = false;
+      for (let n = startAt, tries = 0; tries < 8; tries++, n++) {
+        const name = `${box}_${n}.jpg`;
+        const up = await this.put(id, name, buffer, 'fail', 'image/jpeg');
+        if (up.ok) return { name, path: `${rootFolder}/${folder}/${name}` };
+        if (up.status === 404) { this.ids.delete(key); removed = true; break; }   // the folder was removed meanwhile: look it up again
+        if (up.status !== 409) throw httpError(502, `OneDrive upload failed ${up.status}`);
+      }
+      if (!removed) break;
     }
     throw httpError(502, 'OneDrive upload failed: file name clash');
   }
 
   // A file with a fixed name (the PDF). Writing it again replaces it.
   async saveNamed({ rootFolder, folder, name, buffer }) {
-    const id = await this.ensureFolder(rootFolder, folder);
+    const id = await this.folderId(rootFolder, folder);
     const up = await this.put(id, name, buffer, 'replace', 'application/pdf');
     if (!up.ok) throw httpError(502, `OneDrive upload failed ${up.status}`);
     return { name, path: `${rootFolder}/${folder}/${name}` };

@@ -38,7 +38,9 @@ export function createApp(cfg, deps = {}) {
   const sites = new SiteStore(jsonFor('sites.json'), cfg.clients);   // cfg.clients stays the live list
   const clientById = { get: (id) => sites.get(id) };
   const refreshAll = () => Promise.all([state.refresh(), sites.refresh()]);   // does nothing when the records are on this computer
-  const fresh = () => mutex.run(refreshAll);            // deleted sites stay known, so old visits still work
+  const fresh = () => mutex.run(refreshAll);
+  // For a photo or a visit only the records are needed; the site list is read again only if the site is not known here yet.
+  const refreshFor = async (clientId) => { await state.refresh(); if (!sites.get(clientId)) await sites.refresh(); };            // deleted sites stay known, so old visits still work
   const fails = new Map(); // ip -> [timestamps] for PIN rate limit
 
   // ---- login: each vendor has their own PIN, and the token says which vendor it belongs to ----
@@ -113,14 +115,14 @@ export function createApp(cfg, deps = {}) {
     // A retry after a network drop sends the same bytes to the same box. The same picture in a DIFFERENT box is a different photo.
     const hash = `${q.box}:${crypto.createHash('sha256').update(buffer).digest('hex')}`;
     return mutex.run(async () => {
-      await refreshAll();
+      await refreshFor(q.client);
       const c = validateCommon(q);
       const v = state.visit(q.visit) || state.create(q.visit, { client: q.client, date: q.date });
       assignFolder(v, c, vendorName || v.cleaner || cfg.cleanerName);
       if (v.client !== q.client || v.date !== q.date) throw httpError(409, 'Photo does not match this visit');
       if (v.photos[hash]) return { ok: true, duplicate: true, name: v.photos[hash].name };
       if (v.submitted) throw httpError(409, 'Visit already submitted');
-      const saved = await storage.saveFile({ rootFolder: cfg.rootFolder, folder: v.folder, box: q.box, buffer });
+      const saved = await storage.saveFile({ rootFolder: cfg.rootFolder, folder: v.folder, box: q.box, buffer, startAt: 1 + Math.max(0, ...Object.values(v.photos).filter((p) => p.box === q.box).map((p) => +(/_(\d+)\.jpg$/.exec(p.name) || [0, 0])[1])) });
       const num = (x) => (x === undefined || x === '' || Number.isNaN(+x) ? null : +x);
       const lat = num(q.lat), lng = num(q.lng);
       v.photos[hash] = {
@@ -145,7 +147,7 @@ export function createApp(cfg, deps = {}) {
     if (b.inverters !== undefined && clampInverters(b.inverters) === null) throw httpError(400, 'Bad inverter count');
     const details = String(b.details || '').trim().slice(0, 1000);
     return mutex.run(async () => {
-      await refreshAll();
+      await refreshFor(b.client);
       const c = validateCommon(b);
       let v = state.visit(b.visit);
       if (v?.submitted) return { ok: true, duplicate: true };
