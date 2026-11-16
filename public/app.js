@@ -3,6 +3,10 @@ import { readExif } from '/exif.js';
 // All words the cleaner sees are here, so they are easy to change.
 const T = {
   pickClient: 'Choose client…',
+  addSite: '+ Site not listed? Add it…',
+  askSite: 'Type the name of the site',
+  siteAdded: (n) => `Site added: ${n}`,
+  siteFailed: (m) => `Could not add the site: ${m}`,
   saved: '✓ Saved. Ready for the next visit.',
   waiting: (n) => `${n} item${n === 1 ? '' : 's'} waiting, will send automatically`,
   waitingOpen: (n) => `${n} item${n === 1 ? '' : 's'} waiting for signal. Keep this app open.`,
@@ -386,7 +390,26 @@ function showMissing(items, scroll) {
 const refreshMissing = () => { if (!$('missing').hidden) showMissing(missingItems(), false); };
 
 // ---------- client choice ----------
-$('client').onchange = () => {
+const NEW_SITE = '__new';
+// A site that is not in the list: the cleaner types its name and it is added for everyone
+async function addSiteManually() {
+  const name = (prompt(T.askSite) || '').trim();
+  if (!name) { $('client').value = prevClient; return false; }
+  try {
+    const r = await fetch('/api/sites', { method: 'POST', headers: auth(), body: JSON.stringify({ name }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Server error');
+    if (!cfg.clients.some((c) => c.id === j.id)) { cfg.clients.push({ id: j.id, name: j.name }); store('config', JSON.stringify(cfg)); }
+    drawClients(); $('client').value = j.id; say(T.siteAdded(j.name), 'ok');
+    return true;
+  } catch (e) { $('client').value = prevClient; say(T.siteFailed(e instanceof TypeError ? 'no signal' : e.message), 'err'); return false; }
+}
+function drawClients() { $('client').replaceChildren(new Option(T.pickClient, ''), ...cfg.clients.map((x) => new Option(x.name, x.id)), new Option(T.addSite, NEW_SITE)); }
+
+$('client').onchange = async () => {
+  if ($('client').value === NEW_SITE) {
+    if (!(await addSiteManually())) return;
+  }
   const had = Object.values(form.photos).some((l) => l.length);
   if (had && !confirm(T.clearPhotos)) { $('client').value = prevClient; return; }
   Object.values(form.photos).flat().forEach((p) => URL.revokeObjectURL(p.url));
@@ -459,7 +482,7 @@ function init(c) {
   $('login').hidden = true; $('app').hidden = false;
   $('who').textContent = cfg.cleanerName;
   if (cfg.version) $('ver').textContent = `Version ${cfg.version.version}${cfg.version.commit ? ' · ' + cfg.version.commit : ''}`;
-  $('client').replaceChildren(new Option(T.pickClient, ''), ...cfg.clients.map((x) => new Option(x.name, x.id)));
+  drawClients();
   const d = $('date'); d.max = cfg.today; d.value = cfg.today;
   const min = new Date(cfg.today + 'T00:00:00Z'); min.setUTCDate(min.getUTCDate() - cfg.maxDaysBack);
   d.min = min.toISOString().slice(0, 10);

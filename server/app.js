@@ -4,30 +4,41 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HEADERS, boxesFor, isBoxKey, declaredInverters, clampInverters, formConfig, validateAnswers, validateSignature, amcStatus, AMC_REMIND_DAYS, buildRow, attention, locationSourceFrom, photoCount, missingPhotos, colIndex } from './form.js';
-import { findVendor } from './vendors.js';
+import { findVendor, describeUsers } from './vendors.js';
+import { SiteStore } from './sites.js';
+import { buildReportPdf } from './pdf.js';
 import { VERSION } from './version.js';
 import { State } from './state.js';
+import { FileJson, OneDriveJson } from './jsonstore.js';
+import { NoSheet } from './sheets/none.js';
 import { LocalStorage, httpError } from './storage/local.js';
 import { OneDriveStorage } from './storage/onedrive.js';
 import { CsvSheet } from './sheets/csv.js';
 import { ExcelSheet } from './sheets/excel.js';
 import { GoogleSheet } from './sheets/google.js';
-import { Mutex, istDate, istDateTime, daysBetween, isRealDate, distanceM } from './util.js';
+import { Mutex, entryFolderName, istDate, istDateTime, daysBetween, isRealDate, distanceM } from './util.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 
 export function createApp(cfg, deps = {}) {
   const secret = cfg.secret || crypto.randomBytes(32).toString('hex');
-  const state = new State(path.join(cfg.dataDir, 'state.json'));
   const storage = deps.storage || (cfg.storage === 'onedrive' ? new OneDriveStorage(cfg.ms) : new LocalStorage(cfg.localRoot || path.join(cfg.dataDir, 'onedrive')));
-  const sheet = deps.sheet || (cfg.sheet === 'google'
+  // The app's records: on a file on this computer, or inside OneDrive when the host has no permanent disk (Vercel).
+  const remote = !!deps.jsonStore || cfg.stateStore === 'onedrive';
+  if (remote && !deps.jsonStore && !(storage instanceof OneDriveStorage)) throw new Error('STATE_STORE=onedrive needs STORAGE=onedrive');
+  const jsonFor = (name) => (deps.jsonStore ? deps.jsonStore(name) : remote ? new OneDriveJson(storage, cfg.rootFolder, name) : new FileJson(name === 'sites.json' && cfg.sitesFile ? cfg.sitesFile : path.join(cfg.dataDir, name)));
+  const state = new State(jsonFor('state.json'));
+  const sheet = deps.sheet || (cfg.sheet === 'none' ? new NoSheet() : cfg.sheet === 'google'
     ? new GoogleSheet({ sheetId: cfg.sheetId, ...cfg.google, logoUrl: cfg.logoUrl, rootFolder: cfg.rootFolder, clients: cfg.clients }, HEADERS)
     : cfg.sheet === 'csv' ? new CsvSheet(cfg.dataDir, HEADERS)
     : new ExcelSheet(path.join(cfg.dataDir, 'WRS_Cleaning_Status.xlsx'), HEADERS));
   const mutex = new Mutex();
   const now = deps.now || (() => Date.now());
-  const clientById = new Map(cfg.clients.map((c) => [c.id, c]));
+  const sites = new SiteStore(jsonFor('sites.json'), cfg.clients);   // cfg.clients stays the live list
+  const clientById = { get: (id) => sites.get(id) };
+  const refreshAll = () => Promise.all([state.refresh(), sites.refresh()]);   // does nothing when the records are on this computer
+  const fresh = () => mutex.run(refreshAll);            // deleted sites stay known, so old visits still work
   const fails = new Map(); // ip -> [timestamps] for PIN rate limit
 
   // ---- login: each vendor has their own PIN, and the token says which vendor it belongs to ----
@@ -57,9 +68,9 @@ export function createApp(cfg, deps = {}) {
   }
 
   // ---- validation ----
-  function validateCommon({ client, date, box }) {
+  function validateCommon({ client, date, box }, skipClient) {
     const c = clientById.get(client);
-    if (!c) throw httpError(400, 'Unknown client');
+    if (!c && !skipClient) throw httpError(400, 'Unknown client');
     if (!isRealDate(date)) throw httpError(400, 'Bad date');
     const back = daysBetween(date, istDate(now()));
     if (back < 0) throw httpError(400, 'Date is in the future');
@@ -75,12 +86,21 @@ export function createApp(cfg, deps = {}) {
     return {
       cleanerName: vendor.name, maxDaysBack: cfg.maxDaysBack, today: istDate(now()), form: formConfig(), version: VERSION, amcRemindDays: AMC_REMIND_DAYS,
       // Only the name, and the AMC dates the company typed in (for the reminder shown to the client after he signs)
-      clients: cfg.clients.map((c) => ({ id: c.id, name: c.name, installed: dateOrEmpty(c.installed), amcExpiry: dateOrEmpty(c.amcExpiry) })),
+      clients: sites.active().map((c) => ({ id: c.id, name: c.name, installed: dateOrEmpty(c.installed), amcExpiry: dateOrEmpty(c.amcExpiry) })),
     };
   }
 
-  function savePhoto(q, buffer) {
-    const c = validateCommon(q);
+  // The folder of one entry: sitename_date_cleanedby. A second entry with the same name gets _2, _3 ...
+  function assignFolder(v, client, by) {
+    if (v.folder) return v.folder;
+    const base = entryFolderName(client.name, v.date, by), used = new Set(Object.values(state.data.visits).map((x) => (x.folder || '').toLowerCase()));
+    let name = base;
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base}_${i}`;
+    return (v.folder = name);
+  }
+
+  function savePhoto(q, buffer, vendorName) {
+    validateCommon(q, true);
     if (!validId(q.visit)) throw httpError(400, 'Bad visit id');
     if (!buffer.length || buffer[0] !== 0xff || buffer[1] !== 0xd8) throw httpError(400, 'Not a JPEG photo');
     if (buffer.length > cfg.maxPhotoBytes) throw httpError(413, 'Photo too large');
@@ -93,11 +113,14 @@ export function createApp(cfg, deps = {}) {
     // A retry after a network drop sends the same bytes to the same box. The same picture in a DIFFERENT box is a different photo.
     const hash = `${q.box}:${crypto.createHash('sha256').update(buffer).digest('hex')}`;
     return mutex.run(async () => {
+      await refreshAll();
+      const c = validateCommon(q);
       const v = state.visit(q.visit) || state.create(q.visit, { client: q.client, date: q.date });
+      assignFolder(v, c, vendorName || v.cleaner || cfg.cleanerName);
       if (v.client !== q.client || v.date !== q.date) throw httpError(409, 'Photo does not match this visit');
       if (v.photos[hash]) return { ok: true, duplicate: true, name: v.photos[hash].name };
       if (v.submitted) throw httpError(409, 'Visit already submitted');
-      const saved = await storage.saveFile({ rootFolder: cfg.rootFolder, clientFolder: c.folder, date: q.date, box: q.box, buffer });
+      const saved = await storage.saveFile({ rootFolder: cfg.rootFolder, folder: v.folder, box: q.box, buffer });
       const num = (x) => (x === undefined || x === '' || Number.isNaN(+x) ? null : +x);
       const lat = num(q.lat), lng = num(q.lng);
       v.photos[hash] = {
@@ -114,7 +137,7 @@ export function createApp(cfg, deps = {}) {
   }
 
   function submitVisit(b, vendorName) {
-    const c = validateCommon(b);
+    validateCommon(b, true);
     if (!validId(b.visit)) throw httpError(400, 'Bad visit id');
     if (b.defects !== 'Yes' && b.defects !== 'No') throw httpError(400, 'Defects answer is required');
     const answers = validateAnswers(b.answers);
@@ -122,11 +145,14 @@ export function createApp(cfg, deps = {}) {
     if (b.inverters !== undefined && clampInverters(b.inverters) === null) throw httpError(400, 'Bad inverter count');
     const details = String(b.details || '').trim().slice(0, 1000);
     return mutex.run(async () => {
+      await refreshAll();
+      const c = validateCommon(b);
       let v = state.visit(b.visit);
       if (v?.submitted) return { ok: true, duplicate: true };
       if (v && (v.client !== b.client || v.date !== b.date)) throw httpError(409, 'Visit does not match its photos');
       v = v || state.create(b.visit, { client: b.client, date: b.date });
       v.cleaner = vendorName || cfg.cleanerName;          // the vendor who signed in
+      assignFolder(v, c, v.cleaner);
       v.signature = signature;                            // the client's signature record (the picture is a photo in box Signature)
       const inverters = declaredInverters(v, b.inverters), boxes = boxesFor(inverters), defects = details ? 'Yes' : b.defects;
       v.inverters = inverters;
@@ -138,7 +164,8 @@ export function createApp(cfg, deps = {}) {
       v.submitted = { at: now(), defects, details, inverters, answers, counts, missing: missingPhotos(v, boxes), checks: row[colIndex('checks')], row, sheetDone: false };
       await state.save();
       const pushed = await pushRow(v);
-      return { ok: true, sheet: pushed ? 'written' : 'waiting' };
+      const pdf = await pushPdf(v);
+      return { ok: true, sheet: pushed ? 'written' : 'waiting', pdf: pdf ? 'saved' : 'waiting' };
     });
   }
 
@@ -158,13 +185,43 @@ export function createApp(cfg, deps = {}) {
     return true;
   }
 
+  // The PDF report of the entry: answers, the client's signature and every photo. Must be called inside the mutex.
+  async function pushPdf(v) {
+    const sub = v.submitted, c = clientById.get(v.client);
+    if (!v.folder || sub.pdfDone) return true;
+    try {
+      const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+      const all = Object.values(v.photos).sort(byName);
+      const photos = await Promise.all(all.filter((ph) => ph.box !== 'Signature').map(async (ph) => ({ box: ph.box, name: ph.name, buffer: await storage.read(ph.path) })));
+      const sig = all.find((ph) => ph.box === 'Signature');
+      const logo = await fs.readFile(path.join(PUBLIC, 'logo.png')).catch(() => null);
+      const buffer = await buildReportPdf({
+        client: c.name, folder: `${cfg.rootFolder}/${v.folder}`, date: v.date, cleaner: v.cleaner, submittedAt: sub.row[colIndex('at')],
+        answers: sub.answers, defects: sub.defects, details: sub.details, checks: sub.checks, form: formConfig(), signature: v.signature,
+        boxes: boxesFor(sub.inverters), photos, signatureBuffer: sig ? await storage.read(sig.path) : null, logo,
+      });
+      sub.pdf = await storage.saveNamed({ rootFolder: cfg.rootFolder, folder: v.folder, name: `${v.folder}.pdf`, buffer });
+      sub.pdfDone = true; delete sub.pdfError;
+    } catch (e) {
+      sub.pdfDone = false; sub.pdfError = String(e.message || e);
+      console.error(`PDF for visit ${v.id} is waiting: ${sub.pdfError}`);
+      await state.save().catch(() => {});
+      return false;
+    }
+    await state.save();
+    return true;
+  }
+
   const waiting = () => Object.values(state.data.visits).filter((v) => v.submitted && v.submitted.sheetDone === false).sort((a, b) => a.submitted.at - b.submitted.at);
+
+  const waitingPdf = () => Object.values(state.data.visits).filter((v) => v.submitted && v.submitted.pdfDone === false);
 
   // Tries every waiting row, oldest first. Stops at the first failure so the order stays right.
   function retryPending() {
     return mutex.run(async () => {
       let written = 0;
       for (const v of waiting()) { if (!(await pushRow(v))) break; written++; }
+      for (const v of waitingPdf()) if (!(await pushPdf(v))) break;
       return { written, left: waiting().length };
     });
   }
@@ -212,6 +269,7 @@ export function createApp(cfg, deps = {}) {
   }
   async function hrApi(req, res, p, url) {
     if (!hrAllowed(req, url)) return send(res, 401, { error: 'Wrong or missing HR key' });
+    await fresh();
     if (p === '/api/hr/visits') {
       const visits = Object.values(state.data.visits).filter((v) => v.submitted).map((v) => {
         const c = clientById.get(v.client), sub = v.submitted, boxes = boxesFor(sub.inverters ?? declaredInverters(v));
@@ -237,6 +295,44 @@ export function createApp(cfg, deps = {}) {
     send(res, 404, { error: 'Not found' });
   }
 
+  // ---- admin: add or delete sites, see the users ----
+  const makeAdminToken = () => { const exp = now() + 12 * 3600000; return `${exp}.${sign(`admin.${exp}`)}`; };
+  function adminAllowed(req) {
+    const [exp, mac] = (req.headers.authorization || '').replace(/^Bearer /, '').split('.');
+    if (!exp || !mac || +exp < now()) return false;
+    const good = sign(`admin.${exp}`);
+    return mac.length === good.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good));
+  }
+  const same = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+  const listSites = () => sites.active().map((c) => ({ id: c.id, name: c.name, addedBy: c.addedBy || '' })).sort((a, b) => a.name.localeCompare(b.name));
+  async function adminApi(req, res, p) {
+    const json = async () => JSON.parse((await body(req, 2000)).toString() || '{}');
+    if (p === '/api/admin/login' && req.method === 'POST') {
+      if (!cfg.adminPassword) return send(res, 503, { error: 'Admin login is not set up yet (ADMIN_PASSWORD is empty)' });
+      const ip = 'admin:' + (String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown');
+      const recent = (fails.get(ip) || []).filter((t) => t > now() - 60000);
+      if (recent.length >= 5) throw httpError(429, 'Too many tries. Wait one minute.');
+      const { username, password } = await json();
+      const okUser = same(username, cfg.adminUser), okPass = same(password, cfg.adminPassword);
+      if (!(okUser && okPass)) { recent.push(now()); fails.set(ip, recent); throw httpError(401, 'Wrong username or password'); }
+      fails.delete(ip);
+      return send(res, 200, { token: makeAdminToken() });
+    }
+    if (!adminAllowed(req)) return send(res, 401, { error: 'Please sign in as admin' });
+    if (p === '/api/admin/sites' && req.method === 'GET') { await fresh(); return send(res, 200, { sites: listSites(), users: describeUsers(cfg.vendors) }); }
+    if (p === '/api/admin/sites' && req.method === 'POST') {
+      const { name } = await json();
+      const r = await mutex.run(async () => { await refreshAll(); return sites.add(name, 'admin'); });
+      return send(res, 200, { existed: r.existed, sites: listSites() });
+    }
+    if (p === '/api/admin/sites/delete' && req.method === 'POST') {
+      const { id } = await json();
+      await mutex.run(async () => { await refreshAll(); return sites.remove(id); });
+      return send(res, 200, { sites: listSites() });
+    }
+    send(res, 404, { error: 'Not found' });
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://x');
@@ -248,6 +344,7 @@ export function createApp(cfg, deps = {}) {
         return res.end(file);
       }
       if (p.startsWith('/api/hr/')) return await hrApi(req, res, p, url);
+      if (p.startsWith('/api/admin/')) return await adminApi(req, res, p);
       if (!p.startsWith('/api/')) return await serveStatic(req, res, p);
 
       if (p === '/api/health') return send(res, 200, { ok: true, ...VERSION });
@@ -259,10 +356,19 @@ export function createApp(cfg, deps = {}) {
       const who = authed(req);
       if (!who) return send(res, 401, { error: 'Please sign in' });
 
-      if (p === '/api/config' && req.method === 'GET') return send(res, 200, config(who));
+      if (p === '/api/sites' && req.method === 'POST') {            // a cleaner adds a site that is not in the list
+        const { name } = JSON.parse((await body(req, 2000)).toString() || '{}');
+        const r = await mutex.run(async () => { await refreshAll(); return sites.add(name, who.name); });
+        return send(res, 200, { id: r.site.id, name: r.site.name, existed: r.existed });
+      }
+      if (p === '/api/config' && req.method === 'GET') {
+        await fresh();
+        if (waiting().length || waitingPdf().length) await retryPending().catch(() => {});   // hosts that sleep have no timer, so waiting items are retried when a phone opens the app
+        return send(res, 200, config(who));
+      }
       if (p === '/api/photo' && req.method === 'POST') {
         const q = Object.fromEntries(url.searchParams);
-        return send(res, 200, await savePhoto(q, await body(req, cfg.maxPhotoBytes + 1024)));
+        return send(res, 200, await savePhoto(q, await body(req, cfg.maxPhotoBytes + 1024), who.name));
       }
       if (p === '/api/visit' && req.method === 'POST') {
         return send(res, 200, await submitVisit(JSON.parse((await body(req, 20000)).toString() || '{}'), who.name));
@@ -278,7 +384,7 @@ export function createApp(cfg, deps = {}) {
   server.direct = { photo: savePhoto, visit: submitVisit, retryPending };
   server.sheet = sheet;
   if (cfg.sheetRetryMs > 0) {
-    const timer = setInterval(() => { if (waiting().length) retryPending().catch(() => {}); }, cfg.sheetRetryMs);
+    const timer = setInterval(() => { if (waiting().length || waitingPdf().length) retryPending().catch(() => {}); }, cfg.sheetRetryMs);
     timer.unref();
     server.on('close', () => clearInterval(timer));
   }

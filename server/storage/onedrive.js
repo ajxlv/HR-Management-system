@@ -35,35 +35,92 @@ export class OneDriveStorage {
     return { status: r.status, ok: r.ok, json: text ? JSON.parse(text) : {} };
   }
 
-  async saveFile({ rootFolder, clientFolder, date, box, buffer }) {
-    const enc = (s) => s.split('/').map(encodeURIComponent).join('/');
-    const clientPath = `${rootFolder}/${clientFolder}`;
-    const c = await this.graph('GET', `${this.drive}/root:/${enc(clientPath)}`);
-    if (c.status === 404) throw httpError(422, `Client folder not found in OneDrive: ${clientPath}`);
-    if (!c.ok) throw httpError(502, `OneDrive error ${c.status}`);
+  enc(s) { return s.split('/').map(encodeURIComponent).join('/'); }
 
-    let d = await this.graph('GET', `${this.drive}/items/${c.json.id}:/${date}`);
+  // The root folder and the entry folder are created when they do not exist yet. Returns the entry folder's item id.
+  async ensureFolder(rootFolder, folder) {
+    let root = await this.graph('GET', `${this.drive}/root:/${this.enc(rootFolder)}`);
+    if (root.status === 404) {
+      root = await this.graph('POST', `${this.drive}/root/children`, { body: { name: rootFolder, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' } });
+      if (root.status === 409) root = await this.graph('GET', `${this.drive}/root:/${this.enc(rootFolder)}`);
+    }
+    if (!root.ok) throw httpError(502, `OneDrive error ${root.status}`);
+    let d = await this.graph('GET', `${this.drive}/items/${root.json.id}:/${this.enc(folder)}`);
     if (d.status === 404) {
-      d = await this.graph('POST', `${this.drive}/items/${c.json.id}/children`, {
-        body: { name: date, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' },
-      });
-      if (d.status === 409) d = await this.graph('GET', `${this.drive}/items/${c.json.id}:/${date}`);
+      d = await this.graph('POST', `${this.drive}/items/${root.json.id}/children`, { body: { name: folder, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' } });
+      if (d.status === 409) d = await this.graph('GET', `${this.drive}/items/${root.json.id}:/${this.enc(folder)}`);
     }
     if (!d.ok) throw httpError(502, `OneDrive error ${d.status}`);
+    return d.json.id;
+  }
 
-    const kids = await this.graph('GET', `${this.drive}/items/${d.json.id}/children?$select=name&$top=500`);
+  // Simple upload takes up to 4 MB; bigger files (the PDF with all the photos) go through an upload session in chunks.
+  async put(folderId, name, buffer, behavior, contentType, ifMatch) {
+    if (buffer.length < 3.5 * 1024 * 1024) {
+      return this.graph('PUT', `${this.drive}/items/${folderId}:/${this.enc(name)}:/content?@microsoft.graph.conflictBehavior=${behavior}`,
+        { body: buffer, raw: true, headers: { 'Content-Type': contentType, ...(ifMatch ? { 'If-Match': ifMatch } : {}) } });
+    }
+    const s = await this.graph('POST', `${this.drive}/items/${folderId}:/${this.enc(name)}:/createUploadSession`, { body: { item: { '@microsoft.graph.conflictBehavior': behavior } } });
+    if (!s.ok) return s;
+    const CHUNK = 320 * 1024 * 10;
+    let last = { ok: false, status: 0, json: {} };
+    for (let at = 0; at < buffer.length; at += CHUNK) {
+      const part = buffer.subarray(at, Math.min(buffer.length, at + CHUNK));
+      const r = await fetch(s.json.uploadUrl, { method: 'PUT', body: part, headers: { 'Content-Length': String(part.length), 'Content-Range': `bytes ${at}-${at + part.length - 1}/${buffer.length}` } });
+      const text = await r.text();
+      last = { ok: r.ok, status: r.status, json: text ? JSON.parse(text) : {} };
+      if (!r.ok) return last;
+    }
+    return last;
+  }
+
+  async saveFile({ rootFolder, folder, box, buffer }) {
+    const id = await this.ensureFolder(rootFolder, folder);
+    const kids = await this.graph('GET', `${this.drive}/items/${id}/children?$select=name&$top=500`);
     if (!kids.ok) throw httpError(502, `OneDrive error ${kids.status}`);
     const re = new RegExp(`^${box}_(\\d+)\\.jpg$`);
     let n = Math.max(0, ...kids.json.value.map((k) => (k.name.match(re) || [0, 0])[1] * 1)) + 1;
-
     for (let tries = 0; tries < 5; tries++, n++) {
       const name = `${box}_${n}.jpg`;
-      const up = await this.graph('PUT',
-        `${this.drive}/items/${d.json.id}:/${name}:/content?@microsoft.graph.conflictBehavior=fail`,
-        { body: buffer, raw: true, headers: { 'Content-Type': 'image/jpeg' } });
-      if (up.ok) return { name, path: `${clientPath}/${date}/${name}` };
+      const up = await this.put(id, name, buffer, 'fail', 'image/jpeg');
+      if (up.ok) return { name, path: `${rootFolder}/${folder}/${name}` };
       if (up.status !== 409) throw httpError(502, `OneDrive upload failed ${up.status}`);
     }
     throw httpError(502, 'OneDrive upload failed: file name clash');
+  }
+
+  // A file with a fixed name (the PDF). Writing it again replaces it.
+  async saveNamed({ rootFolder, folder, name, buffer }) {
+    const id = await this.ensureFolder(rootFolder, folder);
+    const up = await this.put(id, name, buffer, 'replace', 'application/pdf');
+    if (!up.ok) throw httpError(502, `OneDrive upload failed ${up.status}`);
+    return { name, path: `${rootFolder}/${folder}/${name}` };
+  }
+
+  // The app's own small records (state.json, sites.json) live in <root folder>/_app-data/.
+  // getJson returns { obj, etag } or null; putJson only succeeds if nobody changed the file since that etag (else status 412).
+  async dataFolderId(rootFolder) { return (this.dataFolder ||= await this.ensureFolder(rootFolder, '_app-data')); }
+  async getJson(rootFolder, name) {
+    const id = await this.dataFolderId(rootFolder);
+    const meta = await this.graph('GET', `${this.drive}/items/${id}:/${this.enc(name)}`);
+    if (meta.status === 404) return null;
+    if (!meta.ok) throw httpError(502, `OneDrive error ${meta.status}`);
+    const r = await fetch(`https://graph.microsoft.com/v1.0${this.drive}/items/${meta.json.id}/content`, { headers: { Authorization: `Bearer ${await this.token()}` } });
+    if (!r.ok) throw httpError(502, `OneDrive read failed ${r.status}`);
+    return { obj: JSON.parse(await r.text()), etag: meta.json.eTag };
+  }
+  async putJson(rootFolder, name, obj, etag) {
+    const id = await this.dataFolderId(rootFolder);
+    const up = await this.put(id, name, Buffer.from(JSON.stringify(obj)), 'replace', 'application/json', etag);
+    if (up.status === 412) throw httpError(412, 'The file was changed by someone else');
+    if (!up.ok) throw httpError(502, `OneDrive save failed ${up.status}`);
+    return up.json.eTag;
+  }
+
+  // Used by the PDF and the HR page to get a saved photo back.
+  async read(relPath) {
+    const r = await fetch(`https://graph.microsoft.com/v1.0${this.drive}/root:/${this.enc(relPath)}:/content`, { headers: { Authorization: `Bearer ${await this.token()}` } });
+    if (!r.ok) throw httpError(502, `OneDrive read failed ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
   }
 }

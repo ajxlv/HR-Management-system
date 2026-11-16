@@ -42,3 +42,14 @@ export function findVendor(vendors, pin) {
   }
   return found;
 }
+
+// A username and an ID for each person, made from the order and the name (nothing extra to configure):
+//   Akshay Jadhav (first in the list) -> username akshay.jadhav, ID WRS-01
+export function describeUsers(vendors) {
+  return vendors.map((v, i) => ({
+    name: v.name,
+    username: v.name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, ''),
+    id: `WRS-${String(i + 1).padStart(2, '0')}`,
+    pin: v.pin,
+  }));
+}

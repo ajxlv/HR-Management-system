@@ -2,7 +2,26 @@
 
 A phone web app. The cleaner picks the client and date, takes the photos (Before, After, one box per inverter, Challan, Bill), fills in a short checklist, gives an overall status and presses **Submit**. Photos go to the client's folder in OneDrive. One row per visit goes to a Google Sheet for HR.
 
-No dependencies. Node 18+.
+One dependency (pdfkit, for the PDF report; run `npm install`). Node 18+.
+
+## Version 2 setup: one folder per entry, PDF report, admin and users
+
+**Where things go.** One OneDrive folder (`ROOT_FOLDER`, default `Clients`). Every submitted entry gets its own folder inside it, made by the app:
+
+```
+Clients/
+  Acron-Plast-Pvt.-Ltd_2026-11-13_Akshay-Jadhav/
+    Acron-Plast-Pvt.-Ltd_2026-11-13_Akshay-Jadhav.pdf   (answers, client signature and every photo)
+    Before_1.jpg  After_1.jpg  Inverter1_1.jpg  EarthingPitBefore_1.jpg  EarthingPitAfter_1.jpg  Challan_1.jpg  Bill_1.jpg  Signature_1.jpg
+```
+
+Name = site, date, cleaned by. The same site, date and cleaner twice gives `..._2`. Nothing needs to exist beforehand: the app creates the root folder and each entry folder. If OneDrive is unreachable the phone keeps the photos and retries; if only the PDF fails it is retried every minute.
+
+**Admin.** `/admin.html`, sign in with `ADMIN_USER` / `ADMIN_PASSWORD` (in `.env`). Add or delete sites, and see the cleaners with their ID, username and PIN. Changes are stored in `data/sites.json` (`server/clients.json` is never changed). Deleting a site only removes it from the dropdown; old entries stay.
+
+**Cleaners.** `VENDORS=Name=PIN;...` in `.env`. Each person signs in with their own PIN on the unchanged login screen; the ID (WRS-01 ...) and username (akshay.jadhav ...) come from the list order and the name. At the end of the client list the cleaner finds **+ Site not listed? Add it…**; it asks for the name and adds the site for everybody.
+
+**Switching to the company OneDrive at the end:** set `STORAGE=onedrive`, `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` and `MS_USER` (or `MS_DRIVE_ID`) as in section B below, or keep `STORAGE=local` with `LOCAL_ROOT` on a PC that syncs OneDrive. Client folders no longer need to exist beforehand.
 
 ## Try it on your computer (no accounts needed)
 
@@ -25,14 +44,17 @@ npm run demo:serve
 
 Fills 7 sample visits and runs on http://localhost:3000. Cleaner PIN `1234`. HR dashboard at `/hr.html`, key `hr-demo`. Walkthrough: `docs/DEMO_SCRIPT.md`. What we still need to fill in: `docs/SETUP_CHECKLIST.md`. Screenshots: `docs/screens/`.
 
-## Demo on Vercel (demo only, not for real use)
+## Deploy on Vercel (the real app)
 
-`api/index.js` + `vercel.json` run the whole app as one Vercel function, pre-filled with the sample visits. Vercel has no permanent disk, so everything is kept in temporary storage and is **re-created whenever the function restarts**. Anything the cleaner submits during the demo can disappear after a few minutes of inactivity. The real app must run on a PC or VM with a disk.
+`api/index.js` runs the real app as one Vercel function. Vercel has no permanent disk, so photos and PDFs go to OneDrive, and the app's own records (visits, sites added by cleaners or the admin) are kept in OneDrive too, in `<ROOT_FOLDER>/_app-data/state.json` and `sites.json`. Do not delete that folder.
 
-1. vercel.com, **Add New, Project**, import `ajxlv/hr-management-system`.
-2. Framework preset **Other**. Leave Build Command empty. Production branch: `wrs-cleaning-photos` (Settings, Git).
-3. Optional environment variables to replace the demo defaults: `CLEANER_PIN` (1234) or `VENDORS` (one PIN per vendor), `REPORT_KEY` (hr-demo), `SESSION_SECRET`. Set `DEMO_CLIENTS=real` to show HR's real client list with **no made-up visits** (the default shows six made-up clients with sample visits). The cleaner's screen shows a small **Version** line at the bottom, and `/api/health` returns the same version, so you can check at once that the newest code is running.
-4. Deploy. Open the link on a phone: camera and GPS work because Vercel gives HTTPS.
+1. vercel.com, **Add New, Project**, import this repo. Framework preset **Other**, Build Command empty.
+2. **Environment Variables** (paste the values yourself, never commit them):
+   `SESSION_SECRET`, `VENDORS` (`Name=PIN;Name=PIN`), `ADMIN_USER`, `ADMIN_PASSWORD`, `REPORT_KEY`,
+   `STORAGE=onedrive`, `ROOT_FOLDER=Panel Cleaning`, `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_USER`, `SHEET=none`.
+3. Deploy. The link is HTTPS, so the phone camera and GPS work. `/api/health` shows the running version. If the app is not set up fully it answers "Setup incomplete" and says what is missing.
+
+Notes: each request reads the records from OneDrive first. If two phones save at the same instant, one gets a short "try again" (503) and sends again by itself. Waiting items (for example a PDF that failed once) are retried the next time any phone opens the app. A function may run up to 60 seconds (`vercel.json`), enough for a PDF with many photos. The sample-data demo is kept in `demo/vercel-demo.js`.
 
 ## The client list
 

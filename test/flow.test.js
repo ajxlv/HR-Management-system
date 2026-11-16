@@ -153,8 +153,13 @@ test('full visit: photos, dedupe, numbering, one sheet row, every answer stored'
   assert.equal(cell(row, 'Overall status'), 'Partly completed'); assert.equal(cell(row, 'Defects'), 'Yes');       // details typed -> Yes
   assert.equal(cell(row, 'Before photos taken'), 'Yes');
   assert.match(cell(row, 'Checks'), /No photo: Earthing pit after, Bill/);
-  const files = readdirSync(path.join(dir, 'onedrive', 'Clients', 'Sharma Residence', TODAY)).sort();
-  assert.deepEqual(files, ['After_1.jpg', 'Before_1.jpg', 'Before_2.jpg', 'Challan_1.jpg', 'EarthingPitBefore_1.jpg', 'Inverter1_1.jpg', 'Inverter2_1.jpg', 'Signature_1.jpg']);
+  // one folder for this entry: sitename_date_cleanedby, holding the photos and the PDF report
+  const folder = JSON.parse(readFileSync(path.join(dir, 'state.json'), 'utf8')).visits[id].folder;
+  assert.match(folder, new RegExp(`^Sharma-Residence_${TODAY}_Ramesh(_\\d+)?$`));
+  assert.equal(cell(row, 'Photo folder'), `Clients/${folder}`);
+  const files = readdirSync(path.join(dir, 'onedrive', 'Clients', folder)).sort();
+  assert.deepEqual(files, ['After_1.jpg', 'Before_1.jpg', 'Before_2.jpg', 'Challan_1.jpg', 'EarthingPitBefore_1.jpg', 'Inverter1_1.jpg', 'Inverter2_1.jpg', 'Signature_1.jpg', `${folder}.pdf`].sort());
+  assert.equal(readFileSync(path.join(dir, 'onedrive', 'Clients', folder, `${folder}.pdf`)).subarray(0, 5).toString(), '%PDF-');
 
   // every answer is also kept in the visit record, not only in the sheet
   const rec = JSON.parse(readFileSync(path.join(dir, 'state.json'), 'utf8')).visits[id];
@@ -171,11 +176,11 @@ test('full visit: photos, dedupe, numbering, one sheet row, every answer stored'
   assert.equal(photos.find((p) => p.name === 'Challan_1.jpg').capture, 'gallery');
 });
 
-test('second visit same day continues numbering; gallery photos and EXIF are judged by where the location came from', async () => {
+test('second visit same day gets its own folder; gallery photos and EXIF are judged by where the location came from', async () => {
   const id = 'visit-0002-bbbb';
   // gallery photo whose location is inside the photo (EXIF): verified
   const exif = await (await photo({ visit: id, box: 'Before', cap: 'gallery', src: 'exif', lat: 19.9976, lng: 73.7899, taken: Date.parse(`${TODAY}T05:00:00Z`), tsrc: 'exif' }, jpeg('e1'))).json();
-  assert.equal(exif.name, 'Before_3.jpg');
+  assert.equal(exif.name, 'Before_1.jpg');   // numbering starts again in the new entry folder
   // gallery photo with only the phone's location at upload: "not verified"
   await photo({ visit: id, box: 'After', cap: 'gallery', src: 'phone', lat: 19.9976, lng: 73.7899, acc: 9, tsrc: '' }, jpeg('g1'));
   // camera shot with no location: "no GPS"
@@ -184,12 +189,15 @@ test('second visit same day continues numbering; gallery photos and EXIF are jud
   await photo({ visit: id, box: 'Inverter1', cap: 'gallery', src: 'none', taken: NOW - 2 * 86400000, tsrc: 'exif' }, jpeg('d1'));
   await sign(id);
   await visit({ visit: id });
+  const st = JSON.parse(readFileSync(path.join(dir, 'state.json'), 'utf8')).visits;
+  assert.notEqual(st[id].folder, st['visit-0001-aaaa'].folder);
+  assert.match(st[id].folder, /^Sharma-Residence_.+_Ramesh_\d+$/, 'same site, date and cleaner: a number is added');
   const row = csvRows()[2];
   const checks = cell(row, 'Checks');
-  assert.match(checks, /Location not verified: After_2/);
-  assert.match(checks, /No GPS: After_3/);
-  assert.match(checks, /Taken on 2026-10-31: Inverter1_2/);
-  assert.doesNotMatch(checks, /Before_3/, 'EXIF location is trusted');
+  assert.match(checks, /Location not verified: After_1/);
+  assert.match(checks, /No GPS: After_2/);
+  assert.match(checks, /Taken on 2026-10-31: Inverter1_1/);
+  assert.doesNotMatch(checks, /Before_1/, 'EXIF location is trusted');
   assert.match(checks, /No photo: .*Challan/);
   assert.doesNotMatch(checks, /Signature|signature/, 'the signature is not compared with the visit date or place');
 });
@@ -238,12 +246,12 @@ test('the cleaner sets the inverter count on each visit, for any client', async 
 
 test('failed storage does not lose or double anything', async () => {
   const r = await photo({ visit: 'visit-0005-eeee', box: 'Before', client: 'c06', ...near }, jpeg('c06'));
-  assert.equal(r.status, 200); // c06 folder exists (created in setup)
-  const missing = createApp(testConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '' }), { now: () => NOW });
-  await new Promise((res) => missing.listen(0, res));
-  const url = `http://localhost:${missing.address().port}/api/photo?client=c01&date=${TODAY}&box=Before&visit=visit-0006-ffff`;
-  rmSync(path.join(dir, 'onedrive', 'Clients', 'Sharma Residence'), { recursive: true });
+  assert.equal(r.status, 200);
+  const broken = { saveFile: async () => { throw Object.assign(new Error('OneDrive is down'), { status: 502 }); }, saveNamed: async () => { throw new Error('down'); }, read: async () => { throw new Error('down'); } };
+  const down = createApp(testConfig({ DATA_DIR: dir, SHEET: 'csv', CLEANER_PIN: '' }), { now: () => NOW, storage: broken });
+  await new Promise((res) => down.listen(0, res));
+  const url = `http://localhost:${down.address().port}/api/photo?client=c01&date=${TODAY}&box=Before&visit=visit-0006-ffff`;
   const bad = await fetch(url, { method: 'POST', body: jpeg('zz') });
-  assert.equal(bad.status, 422); // never creates client folders by guessing
-  missing.close();
+  assert.equal(bad.status, 502);   // the cleaner's phone keeps the photo and tries again later
+  down.close();
 });

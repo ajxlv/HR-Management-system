@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WRS Energy · Admin</title>
+  <link rel="icon" href="/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/hr.css">
+  <style>
+    .panel { background:var(--card); border-radius:16px; padding:18px; margin-bottom:14px; box-shadow:0 1px 0 var(--line); }
+    .panel h2 { margin:0 0 12px; font-size:1.05rem; color:var(--brand); }
+    .addrow { display:flex; gap:10px; flex-wrap:wrap; }
+    .addrow input, .gate input.plain { flex:1; min-width:200px; font:inherit; padding:12px 14px; border:2px solid var(--line); border-radius:12px; }
+    .gate input.plain { width:100%; margin-bottom:12px; text-align:left; font-size:1rem; flex:none; }
+    table { width:100%; border-collapse:collapse; font-size:.95rem; }
+    th { text-align:left; color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+    th, td { padding:9px 8px; border-bottom:1px solid var(--line); }
+    td.act { text-align:right; white-space:nowrap; }
+    .del { font:700 .85rem inherit; font-family:inherit; border:2px solid var(--bad); color:var(--bad); background:#fff; border-radius:10px; padding:6px 12px; cursor:pointer; }
+    .tag { font-size:.75rem; font-weight:700; background:#fff4dc; color:var(--warn); border-radius:8px; padding:2px 8px; margin-left:6px; }
+    .ok { color:var(--good); font-weight:700; min-height:1.4em; }
+    .search { width:100%; font:inherit; padding:10px 14px; border:2px solid var(--line); border-radius:12px; margin-bottom:10px; }
+    .scroll { overflow-x:auto; }
+  </style>
+</head>
+<body>
+  <section id="gate" class="gate" hidden>
+    <img src="/logo.png" class="logo-xl" alt="WRS Energy"><div class="brand">Admin</div>
+    <h1>Admin sign in</h1>
+    <input id="user" class="plain" type="text" autocomplete="username" aria-label="Username" placeholder="Username">
+    <input id="pass" class="plain" type="password" autocomplete="current-password" aria-label="Password" placeholder="Password">
+    <button id="go" class="btn">SIGN IN</button>
+    <p id="gateMsg" class="err" role="alert"></p>
+  </section>
+
+  <main id="main" hidden>
+    <header>
+      <div class="brand"><img src="/logo.png" class="logo-sm" alt="WRS Energy"><span>Admin</span></div>
+      <button id="out" class="btn ghost">Sign out</button>
+    </header>
+
+    <section class="panel">
+      <h2>Add a site</h2>
+      <div class="addrow"><input id="newName" type="text" maxlength="100" placeholder="Site name" aria-label="Site name"><button id="add" class="btn">ADD SITE</button></div>
+      <p id="addMsg" class="ok" role="status"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Sites (<span id="siteCount">0</span>)</h2>
+      <input id="find" class="search" type="search" placeholder="Search sites" aria-label="Search sites">
+      <div class="scroll"><table><thead><tr><th>Site</th><th></th></tr></thead><tbody id="sites"></tbody></table></div>
+    </section>
+
+    <section class="panel">
+      <h2>Cleaners (sign in with the PIN)</h2>
+      <div class="scroll"><table><thead><tr><th>ID</th><th>Name</th><th>Username</th><th>PIN</th></tr></thead><tbody id="users"></tbody></table></div>
+    </section>
+  </main>
+  <script src="/admin.js" type="module"></script>
+</body>
+</html>

@@ -14,8 +14,8 @@
   ],
   "functions": {
     "api/index.js": {
-      "maxDuration": 30,
-      "includeFiles": "{demo/samples/**,testlib/clients.fixture.json,server/clients.json,package.json}"
+      "maxDuration": 60,
+      "includeFiles": "{server/clients.json,public/logo.png,package.json}"
     }
   },
   "headers": [

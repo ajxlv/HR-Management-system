@@ -35,3 +35,7 @@ export class Mutex {
 }
 
 export const safeName = (s) => String(s).replace(/[\\/:*?"<>|\[\]]/g, '-').trim().slice(0, 100);
+
+// One folder per entry: sitename_date_cleanedby, e.g. Acron-Plast-Pvt.-Ltd_2026-11-13_Akshay-Jadhav
+const part = (s) => safeName(s).replace(/\s+/g, '-').replace(/[.\- ]+$/, '');
+export const entryFolderName = (site, date, cleanedBy) => `${part(site)}_${date}_${part(cleanedBy || 'Unknown')}`;

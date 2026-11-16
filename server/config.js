@@ -38,6 +38,10 @@ export function loadConfig(env = process.env, overrides = {}) {
     sheet: env.SHEET || 'excel',
     localRoot: env.LOCAL_ROOT || '',
     reportKey: env.REPORT_KEY || '',
+    // Where state.json and sites.json live: 'file' (this computer) or 'onedrive' (hosts with no permanent disk). On Vercel the default is onedrive.
+    stateStore: env.STATE_STORE || (env.VERCEL ? 'onedrive' : 'file'),
+    adminUser: env.ADMIN_USER || 'admin',                    // the admin signs in at /admin.html
+    adminPassword: env.ADMIN_PASSWORD || '',
     sheetId: env.SHEET_ID || '',
     google: env.SHEET === 'google' ? loadGoogleCredentials(env) : {},
     logoUrl: env.LOGO_URL || '',
@@ -47,6 +51,7 @@ export function loadConfig(env = process.env, overrides = {}) {
     gpsMaxDistanceM: num(env.GPS_MAX_DISTANCE_M, 300),
     maxPhotoBytes: 3.8 * 1024 * 1024, // Graph simple upload limit is 4 MB
     clientsFile: path.join(here, 'clients.json'),
+    sitesFile: path.join(path.resolve(env.DATA_DIR || './data'), 'sites.json'),   // sites added or deleted from the app
     ...overrides,
   };
   cfg.clients = JSON.parse(readFileSync(cfg.clientsFile, 'utf8'));

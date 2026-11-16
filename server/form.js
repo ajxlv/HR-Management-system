@@ -210,7 +210,7 @@ export function buildRow({ visit, client, boxes, answers, defects, details, subm
     clientSign: signatureCell(visit),
     beforeTaken: photoCount(visit, 'Before') ? 'Yes' : 'No', afterTaken: photoCount(visit, 'After') ? 'Yes' : 'No',
     overall: answers.overall, defects, details, checks: buildChecks(visit, client, boxes, { gpsMaxDistanceM }),
-    folder: `${rootFolder}/${client.folder}/${visit.date}`,
+    folder: visit.folder ? `${rootFolder}/${visit.folder}` : `${rootFolder}/${client.folder}/${visit.date}`,
     installed: isDate(client.installed) ? client.installed : '', amcExpiry: isDate(client.amcExpiry) ? client.amcExpiry : '',
   };
   for (const e of ELECTRICAL) cell[`e:${e.key}`] = answers.electrical[e.key];
